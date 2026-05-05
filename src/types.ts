@@ -51,3 +51,19 @@ export type StlExportRecord = {
   params: ModelExportParams;
   exportedAt: string;
 };
+
+export type Profile = {
+  id: string;
+  plan: "free" | "premium";
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  subscription_ends_at: string | null;
+  created_at: string;
+};
+
+export type SupabaseShortUrlRow = {
+  short_code: string;
+  original_url: string;
+  scan_count: number;
+  created_at: string;
+};

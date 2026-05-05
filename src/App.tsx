@@ -7,7 +7,9 @@ import EditorPage from './pages/EditorPage';
 import AuthPage from './pages/AuthPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import RedirectPage from './pages/RedirectPage';
-import { getCurrentUser, supabase } from './lib/supabaseClient';
+import { getCurrentUser, getProfile, supabase } from './lib/supabaseClient';
+import { backfillShortUrlOrigins } from './lib/storage';
+import { Profile } from './types';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -44,6 +46,10 @@ const ROUTER_BASENAME = import.meta.env.BASE_URL;
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  // Fix any localhost short URLs stored in localStorage
+  useEffect(() => { backfillShortUrlOrigins(); }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -51,6 +57,9 @@ const App: React.FC = () => {
     getCurrentUser().then((current) => {
       if (mounted) {
         setUser(current);
+        if (current) {
+          getProfile(current.id).then((p) => { if (mounted) setProfile(p); });
+        }
       }
     });
 
@@ -61,7 +70,13 @@ const App: React.FC = () => {
     }
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+      if (nextUser) {
+        getProfile(nextUser.id).then((p) => { if (mounted) setProfile(p); });
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => {
@@ -75,7 +90,7 @@ const App: React.FC = () => {
       <IonReactRouter basename={ROUTER_BASENAME}>
         <IonRouterOutlet>
           <Route exact path="/editor">
-            <EditorPage user={user} />
+            <EditorPage user={user} profile={profile} />
           </Route>
           <Route exact path="/auth">
             <AuthPage user={user} />

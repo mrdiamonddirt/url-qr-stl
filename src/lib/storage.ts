@@ -40,3 +40,18 @@ export function saveStlExport(record: StlExportRecord) {
   const current = readJson<StlExportRecord>(STL_EXPORTS_KEY);
   writeJson(STL_EXPORTS_KEY, [record, ...current]);
 }
+
+/**
+ * Rewrites every stored short URL so it uses the current origin + base path.
+ * Fixes records created in dev (http://localhost:5173) so they work in production.
+ */
+export function backfillShortUrlOrigins() {
+  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+  const correctPrefix = `${window.location.origin}${base}`;
+  const current = readJson<ShortUrlRecord>(SHORT_URLS_KEY);
+  const updated = current.map((record) => ({
+    ...record,
+    shortUrl: `${correctPrefix}/s/${record.code}`,
+  }));
+  writeJson(SHORT_URLS_KEY, updated);
+}

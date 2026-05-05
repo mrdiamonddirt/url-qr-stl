@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  IonBadge,
   IonButton,
   IonCard,
   IonCardContent,
@@ -31,8 +32,8 @@ import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../li
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
-import { signOut, supabase } from "../lib/supabaseClient";
-import { ModelFormat, ShortUrlRecord, StlParams } from "../types";
+import { createCheckoutSession, getUserShortUrls, signOut, supabase } from "../lib/supabaseClient";
+import { ModelFormat, Profile, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
 import "./EditorPage.css";
 
 const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
@@ -49,15 +50,19 @@ const DEFAULT_STL: StlParams = {
 
 type Props = {
   user: User | null;
+  profile: Profile | null;
 };
 
-const EditorPage: React.FC<Props> = ({ user }) => {
+const FREE_SCAN_LIMIT = 20;
+
+const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(TEMPLATE_PRESETS[0].id);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [generated, setGenerated] = useState<ShortUrlRecord | null>(null);
   const [recentByUser, setRecentByUser] = useState<ShortUrlRecord[]>([]);
+  const [supabaseHistory, setSupabaseHistory] = useState<SupabaseShortUrlRow[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
@@ -83,6 +88,11 @@ const EditorPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     setRecentByUser(listShortUrlsByUser(user?.id));
+    if (user) {
+      getUserShortUrls(user.id).then(setSupabaseHistory);
+    } else {
+      setSupabaseHistory([]);
+    }
   }, [user]);
 
   async function handleGenerateQr() {
@@ -120,6 +130,8 @@ const EditorPage: React.FC<Props> = ({ user }) => {
           template_id: selectedTemplate.id,
           template_payload: templateValues,
         });
+        // Refresh Supabase history to include the new entry
+        getUserShortUrls(user.id).then(setSupabaseHistory);
       }
 
       setStatus("Step 1 complete. Preview your QR code, then compose the template preview.");
@@ -227,11 +239,25 @@ const EditorPage: React.FC<Props> = ({ user }) => {
     history.push("/editor");
   }
 
+  async function handleUpgrade() {
+    try {
+      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+      const origin = `${window.location.origin}${base}`;
+      const url = await createCheckoutSession(origin);
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start checkout.");
+    }
+  }
+
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>URL QR STL MVP</IonTitle>
+          <IonTitle>URL QR STL</IonTitle>
+          {user && profile?.plan === "premium" && (
+            <IonBadge slot="end" color="warning" style={{ marginRight: 8 }}>Premium</IonBadge>
+          )}
           <IonButton slot="end" fill="clear" onClick={user ? handleSignOut : () => history.push("/auth")}>
             {user ? "Sign out" : "Sign in"}
           </IonButton>
@@ -469,15 +495,42 @@ const EditorPage: React.FC<Props> = ({ user }) => {
                   <IonCardTitle>Your recent QR tags</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
-                  <ul className="history-list">
-                    {recentByUser.slice(0, 5).map((record) => (
-                      <li key={record.id}>
-                        <strong>{record.code}</strong>
-                        <span>{record.originalUrl}</span>
-                      </li>
-                    ))}
-                    {!recentByUser.length && <li>No tags generated yet.</li>}
-                  </ul>
+                  {user && profile?.plan === "free" && (
+                    <IonCard color="warning" style={{ marginBottom: 12 }}>
+                      <IonCardContent>
+                        <strong>Free plan:</strong> each link allows {FREE_SCAN_LIMIT} scans.
+                        {" "}
+                        <IonButton size="small" onClick={handleUpgrade}>
+                          Upgrade to Premium – £3.99/mo
+                        </IonButton>
+                      </IonCardContent>
+                    </IonCard>
+                  )}
+                  {supabaseHistory.length > 0 ? (
+                    <ul className="history-list">
+                      {supabaseHistory.map((row) => (
+                        <li key={row.short_code}>
+                          <strong>{row.short_code}</strong>
+                          <span>{row.original_url}</span>
+                          <IonBadge
+                            color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
+                          >
+                            {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
+                          </IonBadge>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <ul className="history-list">
+                      {recentByUser.slice(0, 5).map((record) => (
+                        <li key={record.id}>
+                          <strong>{record.code}</strong>
+                          <span>{record.originalUrl}</span>
+                        </li>
+                      ))}
+                      {!recentByUser.length && <li>No tags generated yet.</li>}
+                    </ul>
+                  )}
                 </IonCardContent>
               </IonCard>
             </IonCol>

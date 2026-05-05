@@ -20,5 +20,7 @@ export function ensureHttpUrl(input: string): string {
 }
 
 export function shortUrlForCode(code: string): string {
-  return `${window.location.origin}/s/${code}`;
+  // BASE_URL is '/' in dev and '/url-qr-stl/' in production builds
+  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+  return `${window.location.origin}${base}/s/${code}`;
 }

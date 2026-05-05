@@ -10,8 +10,8 @@ const DETAIL_SCALE: Record<StlParams["detail"], number> = {
 
 const TEMPLATE_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
   low: 144,
-  medium: 180,
-  high: 216,
+  medium: 200,
+  high: 256,
 };
 
 const TEMPLATE_EDGE_GUARD_PX = 2;
@@ -285,7 +285,8 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
     throw new Error("Canvas is unavailable in this browser.");
   }
 
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
   const pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
   const detailData: boolean[] = new Array(sampleWidth * sampleHeight);
@@ -311,9 +312,9 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
       const blue = pixels[idx + 2];
       const alpha = pixels[idx + 3];
       const luma = red * 0.299 + green * 0.587 + blue * 0.114;
-      const isOpaque = alpha > 18;
+      const isOpaque = alpha > 12;
       baseData[y * sampleWidth + x] = isOpaque;
-      detailData[y * sampleWidth + x] = isOpaque && luma < 152;
+      detailData[y * sampleWidth + x] = isOpaque && luma < 176;
     }
   }
 
@@ -323,7 +324,7 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
       height: sampleHeight,
       data: detailData,
     },
-    6
+    3
   );
 
   const denoisedBaseMask = removeTinyIslands(
@@ -332,7 +333,7 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
       height: sampleHeight,
       data: baseData,
     },
-    48
+    40
   );
 
   const bounds = getMaskBounds(denoisedBaseMask);

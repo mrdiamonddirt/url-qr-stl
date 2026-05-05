@@ -35,7 +35,7 @@ import {
 } from "ionicons/icons";
 import { TEMPLATE_PRESETS } from "../constants/templates";
 import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
-import { composeTemplatePreview } from "../lib/templatePreview";
+import { composeTemplatePreview, composeTemplateSelectorPreview } from "../lib/templatePreview";
 import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../lib/stl";
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { toQrDataUrl } from "../lib/qr";
@@ -97,6 +97,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [generated, setGenerated] = useState<ShortUrlRecord | null>(null);
   const [recentByUser, setRecentByUser] = useState<ShortUrlRecord[]>([]);
+  const [templateSelectorPreviews, setTemplateSelectorPreviews] = useState<Record<string, string>>({});
   const [supabaseHistory, setSupabaseHistory] = useState<SupabaseShortUrlRow[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
@@ -147,6 +148,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
   }, [selectedTemplate]);
+
+  useEffect(() => {
+    const nextPreviews = TEMPLATE_PRESETS.reduce<Record<string, string>>((acc, preset) => {
+      const nextValues = preset.id === selectedTemplate.id ? templateValues : buildTemplateDefaults(preset);
+      acc[preset.id] = composeTemplateSelectorPreview(preset, nextValues);
+      return acc;
+    }, {});
+    setTemplateSelectorPreviews(nextPreviews);
+  }, [selectedTemplate, templateValues]);
 
   // Auto-compose preview when template or text settings change (if QR is already generated)
   useEffect(() => {
@@ -908,14 +918,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 className={`template-card-preview template-card-preview--${preset.borderStyle} template-card-preview--${preset.frameStyle}`}
                                 style={{ borderColor: preset.accentColor, color: preset.accentColor }}
                               >
-                                <div className="template-card-surface">
-                                  <div className="template-thumb-qr" aria-hidden="true">
-                                    <span className="finder finder-a" />
-                                    <span className="finder finder-b" />
-                                    <span className="finder finder-c" />
-                                  </div>
-                                </div>
-                                {preset.ctaLabel ? <span className="template-card-cta">{preset.ctaLabel}</span> : null}
+                                {templateSelectorPreviews[preset.id] ? (
+                                  <img
+                                    className="template-card-image"
+                                    src={templateSelectorPreviews[preset.id]}
+                                    alt=""
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <div className="template-card-fallback" aria-hidden="true" />
+                                )}
                               </div>
                               <span className="template-button-label">{preset.name}</span>
                             </button>

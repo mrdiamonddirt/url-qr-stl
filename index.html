@@ -22,6 +22,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   </head>
   <body>
+    <!-- Restore path saved by 404.html for GitHub Pages SPA routing -->
+    <script>
+      (function () {
+        var redirect = sessionStorage.getItem('spa_redirect');
+        if (redirect) {
+          sessionStorage.removeItem('spa_redirect');
+          // BASE is /url-qr-stl in production, empty in dev
+          var base = '/url-qr-stl';
+          window.history.replaceState(null, '', base + redirect);
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

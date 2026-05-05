@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Redirecting...</title>
+  <script>
+    // GitHub Pages SPA redirect trick.
+    // When GitHub Pages 404s on a deep path (e.g. /url-qr-stl/s/CODE),
+    // it serves this file. We save the intended path to sessionStorage
+    // then bounce to the app root, which restores it via history.replaceState.
+    (function () {
+      var base = '/url-qr-stl';
+      var path = window.location.pathname.replace(base, '') || '/';
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+      sessionStorage.setItem('spa_redirect', path + search + hash);
+      window.location.replace(base + '/');
+    })();
+  </script>
+</head>
+<body></body>
+</html>

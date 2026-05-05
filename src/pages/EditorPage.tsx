@@ -49,10 +49,10 @@ const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
 const makeCode = customAlphabet("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz", 7);
 
 const DEFAULT_STL: StlParams = {
-  widthMm: 40,
-  heightMm: 40,
-  depthMm: 2.8,
-  baseMm: 1.2,
+  widthMm: 400,
+  heightMm: 400,
+  depthMm: 28,
+  baseMm: 10,
   detail: "medium",
   invert: false,
 };
@@ -68,6 +68,7 @@ const FREE_SCAN_LIMIT = 20;
 const FREE_TAG_LIMIT = 3;
 const PREMIUM_TAG_LIMIT = 20;
 const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
+const CTA_SIZE_SCALE = 10;
 
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
@@ -85,7 +86,7 @@ function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Rec
 
   if (template.ctaConfig) {
     defaults[template.ctaConfig.fieldKey] = defaults[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
-    defaults[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx);
+    defaults[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx * CTA_SIZE_SCALE);
     defaults[template.ctaConfig.fontKey] = "default";
     defaults[template.ctaConfig.chipHeightKey] = String(template.ctaConfig.chipHeight);
   }
@@ -1105,24 +1106,25 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               </IonSelect>
                             </IonItem>
                             <IonItem className="editor-item">
-                              <IonLabel position="stacked">Text size (px)</IonLabel>
+                              <IonLabel position="stacked">Text size (x10 px)</IonLabel>
                               <IonInput
                                 type="number"
-                                min={selectedTemplate.ctaConfig.minSizePx}
-                                max={selectedTemplate.ctaConfig.maxSizePx}
+                                min={selectedTemplate.ctaConfig.minSizePx * CTA_SIZE_SCALE}
+                                max={selectedTemplate.ctaConfig.maxSizePx * CTA_SIZE_SCALE}
                                 value={Math.min(
-                                  selectedTemplate.ctaConfig.maxSizePx,
+                                  selectedTemplate.ctaConfig.maxSizePx * CTA_SIZE_SCALE,
                                   Math.max(
-                                    selectedTemplate.ctaConfig.minSizePx,
-                                    Number(templateValues[selectedTemplate.ctaConfig.sizeKey]) || selectedTemplate.ctaConfig.defaultSizePx
+                                    selectedTemplate.ctaConfig.minSizePx * CTA_SIZE_SCALE,
+                                    Number(templateValues[selectedTemplate.ctaConfig.sizeKey])
+                                      || selectedTemplate.ctaConfig.defaultSizePx * CTA_SIZE_SCALE
                                   )
                                 )}
                                 onIonInput={(e) => {
                                   const raw = Number(e.detail.value);
                                   if (!Number.isFinite(raw)) return;
                                   const clamped = Math.min(
-                                    selectedTemplate.ctaConfig!.maxSizePx,
-                                    Math.max(selectedTemplate.ctaConfig!.minSizePx, Math.round(raw))
+                                    selectedTemplate.ctaConfig!.maxSizePx * CTA_SIZE_SCALE,
+                                    Math.max(selectedTemplate.ctaConfig!.minSizePx * CTA_SIZE_SCALE, Math.round(raw))
                                   );
                                   setTemplateValues((prev) => ({
                                     ...prev,

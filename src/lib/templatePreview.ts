@@ -34,6 +34,7 @@ type CompositionLayout = {
 
 const BASE_CANVAS_SIZE = 480;
 const SELECTOR_PREVIEW_SIZE = 232;
+const CTA_SIZE_SCALE = 10;
 export const CTA_FONT_STACKS: Record<string, string> = {
   default: "'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
   impact: "Impact, 'Arial Black', sans-serif",
@@ -42,6 +43,50 @@ export const CTA_FONT_STACKS: Record<string, string> = {
   condensed: "'Trebuchet MS', 'Segoe UI', sans-serif",
 };
 const CTA_FONT_STACK = CTA_FONT_STACKS.default;
+
+function resolveScaledCtaSize(rawValue: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(rawValue)) {
+    return clampNumber(fallback, min, max);
+  }
+
+  // Support both legacy plain-px values (e.g. 21) and scaled values (e.g. 210).
+  if (rawValue >= min * CTA_SIZE_SCALE && rawValue <= max * CTA_SIZE_SCALE) {
+    return clampNumber(rawValue / CTA_SIZE_SCALE, min, max);
+  }
+
+  return clampNumber(rawValue, min, max);
+}
+
+function drawTrackedCenteredText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  y: number,
+  trackingPx: number
+) {
+  if (!text) {
+    return;
+  }
+
+  if (trackingPx <= 0 || text.length <= 1) {
+    ctx.strokeText(text, centerX, y);
+    ctx.fillText(text, centerX, y);
+    return;
+  }
+
+  const glyphs = Array.from(text);
+  const glyphWidths = glyphs.map((glyph) => ctx.measureText(glyph).width);
+  const totalWidth = glyphWidths.reduce((sum, width) => sum + width, 0) + trackingPx * (glyphs.length - 1);
+  let drawX = centerX - totalWidth / 2;
+
+  glyphs.forEach((glyph, index) => {
+    const width = glyphWidths[index] ?? 0;
+    const glyphCenterX = drawX + width / 2;
+    ctx.strokeText(glyph, glyphCenterX, y);
+    ctx.fillText(glyph, glyphCenterX, y);
+    drawX += width + trackingPx;
+  });
+}
 
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -328,19 +373,16 @@ function resolveCtaLayout(
   }
 
   const rawSize = Number(values[config.sizeKey]);
-  const size = clampNumber(
-    Number.isFinite(rawSize) ? rawSize : config.defaultSizePx,
-    config.minSizePx,
-    config.maxSizePx
-  ) * scale;
+  const size = resolveScaledCtaSize(rawSize, config.minSizePx, config.maxSizePx, config.defaultSizePx) * scale;
 
   const fontKey = values[config.fontKey] ?? "default";
   const fontStack = CTA_FONT_STACKS[fontKey] ?? CTA_FONT_STACK;
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = `800 ${size}px ${fontStack}`;
+  const weight = fontKey === "impact" ? 700 : 800;
+  ctx.font = `${weight} ${size}px ${fontStack}`;
   const lines = wrapTextLines(ctx, label, (frameInnerWidth ?? config.maxWidth * scale), config.maxLines);
-  const lineHeight = Math.max(14 * scale, Math.round(size * 1.05));
+  const lineHeight = Math.max(14 * scale, Math.round(size * 1.1));
   const contentHeight = Math.max(lineHeight, lines.length * lineHeight);
   const rawChipHeight = Number(values[config.chipHeightKey]);
   const userChipHeight = Number.isFinite(rawChipHeight) && rawChipHeight > 0 ? rawChipHeight : config.chipHeight;
@@ -384,12 +426,29 @@ function drawEditableCtaLabel(
 
   ctx.fillStyle = "#ffffff";
   ctx.font = `800 ${layout.textSize}px ${layout.fontStack}`;
+  ctx.strokeStyle = "rgba(8, 10, 12, 0.55)";
+  ctx.lineWidth = Math.max(1, layout.textSize * 0.08);
+  ctx.lineJoin = "round";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.22)";
+  ctx.shadowBlur = Math.max(1, layout.textSize * 0.12);
+  ctx.shadowOffsetY = Math.max(0.5, layout.textSize * 0.035);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  const tracking = Math.max(0.1, layout.textSize * 0.035);
   const textTop = chipY + layout.chipHeight / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
   layout.lines.forEach((line, index) => {
-    ctx.fillText(line, chipX + layout.chipWidth / 2, textTop + index * layout.lineHeight);
+    drawTrackedCenteredText(
+      ctx,
+      line,
+      chipX + layout.chipWidth / 2,
+      textTop + index * layout.lineHeight,
+      tracking
+    );
   });
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.lineWidth = 1;
   ctx.textAlign = "start";
   ctx.textBaseline = "alphabetic";
 }
@@ -402,7 +461,7 @@ function buildDefaultTemplateValues(template: QrTemplate): Record<string, string
 
   if (template.ctaConfig) {
     values[template.ctaConfig.fieldKey] = values[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
-    values[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx);
+    values[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx * CTA_SIZE_SCALE);
     values[template.ctaConfig.fontKey] = "default";
     values[template.ctaConfig.chipHeightKey] = String(template.ctaConfig.chipHeight);
   }

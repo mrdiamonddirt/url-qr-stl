@@ -39,15 +39,78 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function strokeFrame(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  if (template.borderStyle === "none") {
+    return;
+  }
+
+  ctx.strokeStyle = template.accentColor;
+  ctx.lineWidth = template.borderStyle === "fancy" ? 8 : 6;
+
+  if (template.frameStyle === "rounded") {
+    drawRoundedRect(ctx, x, y, width, height, 24);
+  } else if (template.frameStyle === "circle") {
+    drawRoundedRect(ctx, x, y, width, height, 100);
+  } else {
+    ctx.beginPath();
+    ctx.rect(x, y, width, height);
+    ctx.closePath();
+  }
+
+  ctx.stroke();
+
+  if (template.borderStyle !== "fancy") {
+    return;
+  }
+
+  ctx.lineWidth = 2.5;
+  if (template.frameStyle === "rounded") {
+    drawRoundedRect(ctx, x + 16, y + 16, width - 32, height - 32, 16);
+  } else {
+    ctx.beginPath();
+    ctx.rect(x + 16, y + 16, width - 32, height - 32);
+    ctx.closePath();
+  }
+  ctx.stroke();
+}
+
+function drawCtaLabel(ctx: CanvasRenderingContext2D, label: string, canvasSize: number) {
+  const chipWidth = Math.min(210, Math.max(126, label.length * 13));
+  const chipHeight = 42;
+  const chipX = (canvasSize - chipWidth) / 2;
+  const chipY = canvasSize - 72;
+
+  ctx.fillStyle = "#101418";
+  drawRoundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 17);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 21px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, chipX + chipWidth / 2, chipY + chipHeight / 2 + 1);
+  ctx.textAlign = "start";
+  ctx.textBaseline = "alphabetic";
+}
+
 export async function composeTemplatePreview({
   template,
   values,
   qrDataUrl,
   shortUrl,
 }: ComposeTemplatePreviewInput): Promise<string> {
+  void values;
+  void shortUrl;
   const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 420;
+  canvas.width = 480;
+  canvas.height = 480;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) {
@@ -55,54 +118,30 @@ export async function composeTemplatePreview({
   }
 
   const qrImage = await loadImage(qrDataUrl);
-  const accent = template.accentColor;
-  const line1 = values.line1 ?? template.fields[0]?.defaultValue ?? "";
-  const line2 = values.line2 ?? template.fields[1]?.defaultValue ?? "";
+  const frameInset = template.borderStyle === "none" ? 32 : 22;
+  const ctaReserve = template.ctaLabel ? 54 : 0;
+  const frameSize = canvas.width - frameInset * 2;
+  const qrInset = template.borderStyle === "fancy" ? 38 : template.borderStyle === "simple" ? 28 : 20;
+  const qrSize = frameSize - qrInset * 2;
+  const frameX = frameInset;
+  const frameY = frameInset;
+  const qrX = frameX + qrInset;
+  const qrY = frameY + qrInset - Math.floor(ctaReserve / 3);
 
-  ctx.fillStyle = "#f5f7fa";
+  ctx.fillStyle = "#eef2f7";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  if (template.frameStyle === "rounded") {
-    drawRoundedRect(ctx, 24, 24, canvas.width - 48, canvas.height - 48, 26);
-  } else if (template.frameStyle === "circle") {
-    drawRoundedRect(ctx, 24, 24, canvas.width - 48, canvas.height - 48, 100);
-  } else {
-    ctx.beginPath();
-    ctx.rect(24, 24, canvas.width - 48, canvas.height - 48);
-    ctx.closePath();
-  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(frameX, frameY, frameSize, frameSize);
+  strokeFrame(ctx, template, frameX, frameY, frameSize, frameSize);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fill();
-  ctx.lineWidth = 8;
-  ctx.strokeStyle = accent;
-  ctx.stroke();
-
-  const qrSize = 228;
-  const qrX = 44;
-  const qrY = 96;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(qrX - 8, qrY - 8, qrSize + 16, qrSize + 16);
+  ctx.fillRect(qrX, qrY, qrSize, qrSize);
   ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
 
-  ctx.fillStyle = accent;
-  ctx.font = "700 34px 'Segoe UI', sans-serif";
-  ctx.fillText(template.name.toUpperCase(), 300, 132);
-
-  ctx.fillStyle = "#15243a";
-  ctx.font = "700 28px 'Segoe UI', sans-serif";
-  ctx.fillText(line1, 300, 196);
-  ctx.font = "600 25px 'Segoe UI', sans-serif";
-  ctx.fillText(line2, 300, 242);
-
-  ctx.fillStyle = "#53627d";
-  ctx.font = "500 18px 'Segoe UI', sans-serif";
-  ctx.fillText(shortUrl, 300, 296);
-
-  ctx.fillStyle = "#6a7a96";
-  ctx.font = "500 15px 'Segoe UI', sans-serif";
-  ctx.fillText(template.description, 44, 366);
+  if (template.ctaLabel) {
+    drawCtaLabel(ctx, template.ctaLabel, canvas.width);
+  }
 
   return canvas.toDataURL("image/png");
 }

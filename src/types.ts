@@ -5,12 +5,16 @@ export type TemplateField = {
   defaultValue: string;
 };
 
+export type TemplateBorderStyle = "none" | "simple" | "fancy";
+
 export type QrTemplate = {
   id: string;
   name: string;
   description: string;
   frameStyle: "rounded" | "sharp" | "circle";
   accentColor: string;
+  borderStyle: TemplateBorderStyle;
+  ctaLabel?: string;
   fields: TemplateField[];
 };
 

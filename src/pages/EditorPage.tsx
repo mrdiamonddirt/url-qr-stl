@@ -14,12 +14,12 @@ import {
   IonLabel,
   IonPage,
   IonRow,
-  IonSelect,
-  IonSelectOption,
   IonText,
   IonTitle,
   IonToolbar,
   IonToggle,
+  IonSelect,
+  IonSelectOption,
 } from "@ionic/react";
 import { useHistory } from "react-router";
 import { customAlphabet } from "nanoid";
@@ -262,37 +262,53 @@ const EditorPage: React.FC<Props> = ({ user }) => {
                   <IonCardTitle>2. Design your QR code</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
-                  <IonItem>
-                    <IonLabel>Template</IonLabel>
-                    <IonSelect value={selectedTemplateId} onIonChange={(e) => setSelectedTemplateId(e.detail.value)}>
-                      {TEMPLATE_PRESETS.map((preset) => (
-                        <IonSelectOption key={preset.id} value={preset.id}>
-                          {preset.name}
-                        </IonSelectOption>
-                      ))}
-                    </IonSelect>
-                  </IonItem>
-
-                  <div className="template-chip" style={{ borderColor: selectedTemplate.accentColor }}>
-                    <strong>{selectedTemplate.name}</strong>
-                    <span>{selectedTemplate.description}</span>
+                  <p className="template-picker-title">Template</p>
+                  <div className="template-scroll-row" role="list" aria-label="Template options">
+                    {TEMPLATE_PRESETS.map((preset) => {
+                      const isActive = preset.id === selectedTemplateId;
+                      return (
+                        <div key={preset.id} className="template-option" role="listitem">
+                          <button
+                            type="button"
+                            className={`template-button ${isActive ? "is-active" : ""}`}
+                            style={{
+                              borderColor: isActive ? preset.accentColor : "#c7d1dd",
+                              background: isActive ? "#f8fbff" : "#ffffff",
+                            }}
+                            onClick={() => setSelectedTemplateId(preset.id)}
+                            aria-label={`Select template ${preset.name}`}
+                          >
+                            <div
+                              className={`template-card-preview template-card-preview--${preset.borderStyle} template-card-preview--${preset.frameStyle}`}
+                              style={{ borderColor: preset.accentColor, color: preset.accentColor }}
+                            >
+                              <div className="template-card-surface">
+                                <div className="template-thumb-qr" aria-hidden="true">
+                                  <span className="finder finder-a" />
+                                  <span className="finder finder-b" />
+                                  <span className="finder finder-c" />
+                                </div>
+                              </div>
+                              {preset.ctaLabel ? <span className="template-card-cta">{preset.ctaLabel}</span> : null}
+                            </div>
+                            <span className="template-button-label">{preset.name}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {selectedTemplate.fields.map((field) => (
-                    <IonItem key={field.key}>
-                      <IonLabel position="stacked">{field.label}</IonLabel>
-                      <IonInput
-                        value={templateValues[field.key] ?? ""}
-                        placeholder={field.placeholder}
-                        onIonInput={(e) => {
-                          const value = (e.detail.value ?? "").toString();
-                          setComposedPreviewUrl("");
-                          setModelPreviewReady(false);
-                          setTemplateValues((prev) => ({ ...prev, [field.key]: value }));
-                        }}
-                      />
-                    </IonItem>
-                  ))}
+                  <div className="template-selection-note">
+                    <strong>{selectedTemplate.name}</strong>
+                    <span>{selectedTemplate.description}</span>
+                    <small>
+                      QR only for now. {selectedTemplate.ctaLabel ? `This version includes a fixed "${selectedTemplate.ctaLabel}" callout.` : "Text stays off unless we add a text-capable layout later."}
+                    </small>
+                  </div>
+
+                  <IonText color="medium">
+                    <p className="template-empty-note">No text fields yet. Pick the border style you want and generate the QR.</p>
+                  </IonText>
 
                   <IonButton className="action-btn" expand="block" onClick={handleGenerateQr}>
                     Generate QR
@@ -386,7 +402,7 @@ const EditorPage: React.FC<Props> = ({ user }) => {
 
                   <div className="stage-action-row">
                     <IonButton expand="block" fill="outline" disabled={!qrDataUrl} onClick={handleComposePreview}>
-                      Preview Template + QR
+                      Preview Selected Tag
                     </IonButton>
                   </div>
 
@@ -395,7 +411,7 @@ const EditorPage: React.FC<Props> = ({ user }) => {
                     {composedPreviewUrl ? (
                       <img src={composedPreviewUrl} alt="Template and QR preview" />
                     ) : (
-                      <span>Compose to preview the final tag design.</span>
+                      <span>Compose to preview the selected tag layout before the 3D step.</span>
                     )}
                   </div>
 

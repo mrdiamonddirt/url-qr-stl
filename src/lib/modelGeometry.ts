@@ -14,16 +14,63 @@ type GridMask = {
   data: boolean[];
 };
 
-function createModelGroupFromGrid(mask: GridMask, params: StlParams): Group {
+type ModelDimensions = {
+  widthMm: number;
+  heightMm: number;
+};
+
+function cropMask(mask: GridMask, padding = 1): GridMask {
+  let minX = mask.width;
+  let minY = mask.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < mask.width; x += 1) {
+      if (!mask.data[y * mask.width + x]) {
+        continue;
+      }
+
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return mask;
+  }
+
+  const left = Math.max(0, minX - padding);
+  const top = Math.max(0, minY - padding);
+  const right = Math.min(mask.width - 1, maxX + padding);
+  const bottom = Math.min(mask.height - 1, maxY + padding);
+  const width = right - left + 1;
+  const height = bottom - top + 1;
+  const data = new Array<boolean>(width * height).fill(false);
+
+  for (let y = top; y <= bottom; y += 1) {
+    for (let x = left; x <= right; x += 1) {
+      data[(y - top) * width + (x - left)] = mask.data[y * mask.width + x];
+    }
+  }
+
+  return { width, height, data };
+}
+
+function createModelGroupFromGrid(mask: GridMask, params: StlParams, dimensions?: ModelDimensions): Group {
+  const modelWidthMm = dimensions?.widthMm ?? params.widthMm;
+  const modelHeightMm = dimensions?.heightMm ?? params.heightMm;
   const detailScale = DETAIL_SCALE[params.detail];
-  const moduleWidth = params.widthMm / mask.width;
-  const moduleHeight = params.heightMm / mask.height;
+  const moduleWidth = modelWidthMm / mask.width;
+  const moduleHeight = modelHeightMm / mask.height;
   const raisedDepth = Math.max(0.4, params.depthMm * detailScale * 0.7);
   const group = new Group();
 
   if (params.baseMm > 0) {
     const base = new Mesh(
-      new BoxGeometry(params.widthMm, params.heightMm, params.baseMm),
+      new BoxGeometry(modelWidthMm, modelHeightMm, params.baseMm),
       new MeshNormalMaterial()
     );
     base.position.set(0, 0, params.baseMm / 2);
@@ -48,8 +95,8 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams): Group {
         new MeshNormalMaterial()
       );
 
-      const xPos = -params.widthMm / 2 + moduleWidth * x + moduleWidth / 2;
-      const yPos = params.heightMm / 2 - moduleHeight * y - moduleHeight / 2;
+      const xPos = -modelWidthMm / 2 + moduleWidth * x + moduleWidth / 2;
+      const yPos = modelHeightMm / 2 - moduleHeight * y - moduleHeight / 2;
 
       module.position.set(xPos, yPos, zOffset);
       group.add(module);
@@ -109,14 +156,22 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
     }
   }
 
-  return createModelGroupFromGrid(
+  const croppedMask = cropMask(
     {
       width: sampleWidth,
       height: sampleHeight,
       data,
     },
-    params
+    2
   );
+
+  const widthRatio = croppedMask.width / sampleWidth;
+  const heightRatio = croppedMask.height / sampleHeight;
+
+  return createModelGroupFromGrid(croppedMask, params, {
+    widthMm: params.widthMm * widthRatio,
+    heightMm: params.heightMm * heightRatio,
+  });
 }
 
 export function disposeQrModelGroup(group: Group) {

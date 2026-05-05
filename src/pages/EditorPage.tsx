@@ -413,6 +413,11 @@ const EditorPage: React.FC<Props> = ({ user }) => {
                       <span>Generate model preview to render your 3D tag.</span>
                     )}
                   </div>
+                  {modelPreviewReady && (
+                    <IonText color="medium">
+                      <p className="model-hint">Drag to rotate, scroll/pinch to zoom, and right-drag to pan.</p>
+                    </IonText>
+                  )}
 
                   <IonItem className="format-item">
                     <IonLabel>Download format</IonLabel>

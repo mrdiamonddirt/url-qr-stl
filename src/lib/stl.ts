@@ -4,6 +4,7 @@ import { createQrModelGroup, disposeQrModelGroup } from "./modelGeometry";
 
 export function createQrStlBlob(value: string, params: StlParams): Blob {
   const group = createQrModelGroup(value, params);
+  group.updateMatrixWorld(true);
 
   const exporter = new STLExporter();
   const output = exporter.parse(group, { binary: true });
@@ -20,6 +21,7 @@ export function createQrStlBlob(value: string, params: StlParams): Blob {
 
 export function createQrObjBlob(value: string, params: StlParams): Blob {
   const group = createQrModelGroup(value, params);
+  group.updateMatrixWorld(true);
   const exporter = new OBJExporter();
   const output = exporter.parse(group);
   disposeQrModelGroup(group);

@@ -53,15 +53,20 @@ Deno.serve(async (req) => {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.mode === "subscription") {
-      const userId = session.subscription_data?.metadata?.supabase_user_id as string | undefined;
       const subscriptionId = session.subscription as string;
+      // subscription_data.metadata is input-only and absent in the event payload.
+      // The user ID is stored on the subscription's own metadata — retrieve it.
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const userId = subscription.metadata?.supabase_user_id as string | undefined;
       if (userId) {
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         await supabase.from("profiles").update({
           plan: "premium",
+          stripe_customer_id: session.customer as string,
           stripe_subscription_id: subscriptionId,
           subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
         }).eq("id", userId);
+      } else {
+        console.error("checkout.session.completed: no supabase_user_id in subscription metadata", subscriptionId);
       }
     }
   }

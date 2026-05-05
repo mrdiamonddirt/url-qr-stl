@@ -1337,8 +1337,6 @@
 /* Loop preview — overlay Controls box inside the preview window */
 .loop-preview-box {
   position: relative;
-  align-items: flex-start;
-  justify-content: flex-start;
 }
 
 .loop-preview-box img {

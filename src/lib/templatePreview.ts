@@ -165,28 +165,6 @@ function strokeFrame(
 
   beginFramePath(ctx, template, x, y, width, height, outerInset, scale);
   ctx.stroke();
-
-  if (template.borderStyle !== "fancy") {
-    return;
-  }
-
-  ctx.lineWidth = Math.max(1.2, 2.5 * scale);
-  const decorativeInset = 16 * scale;
-  if (template.frameStyle === "rounded") {
-    drawRoundedRect(
-      ctx,
-      x + decorativeInset,
-      y + decorativeInset,
-      width - decorativeInset * 2,
-      height - decorativeInset * 2,
-      16 * scale
-    );
-  } else {
-    ctx.beginPath();
-    ctx.rect(x + decorativeInset, y + decorativeInset, width - decorativeInset * 2, height - decorativeInset * 2);
-    ctx.closePath();
-  }
-  ctx.stroke();
 }
 
 function drawTopLoop(

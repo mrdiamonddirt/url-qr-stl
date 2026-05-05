@@ -7,6 +7,20 @@ export type TemplateField = {
 
 export type TemplateBorderStyle = "none" | "simple" | "fancy";
 
+export type TemplateCtaConfig = {
+  fieldKey: string;
+  sizeKey: string;
+  minSizePx: number;
+  maxSizePx: number;
+  defaultSizePx: number;
+  maxLines: number;
+  maxWidth: number;
+  chipHeight: number;
+  chipBottomInset: number;
+  chipRadius: number;
+  chipPaddingX: number;
+};
+
 export type QrTemplate = {
   id: string;
   name: string;
@@ -15,6 +29,7 @@ export type QrTemplate = {
   accentColor: string;
   borderStyle: TemplateBorderStyle;
   ctaLabel?: string;
+  ctaConfig?: TemplateCtaConfig;
   fields: TemplateField[];
 };
 

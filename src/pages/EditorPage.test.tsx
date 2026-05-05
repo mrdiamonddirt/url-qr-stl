@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { IonApp } from "@ionic/react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import EditorPage from "./EditorPage";
 
 function renderEditor() {
@@ -15,7 +16,8 @@ function renderEditor() {
 }
 
 describe("EditorPage template picker", () => {
-  test("shows the simplified QR-only template set with no text inputs", () => {
+  test("shows text controls only for templates that support editable CTA text", async () => {
+    const user = userEvent.setup();
     renderEditor();
 
     expect(screen.getAllByRole("button", { name: /Select template /i })).toHaveLength(5);
@@ -24,8 +26,13 @@ describe("EditorPage template picker", () => {
     expect(screen.getByRole("button", { name: "Select template Fancy Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Scan Me" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Open Link" })).toBeInTheDocument();
-    expect(screen.getByText(/No text fields yet/i)).toBeInTheDocument();
-    expect(screen.queryByText("Top text")).not.toBeInTheDocument();
-    expect(screen.queryByText("Bottom text")).not.toBeInTheDocument();
+
+    expect(screen.getByText(/No text fields for this template/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Type text for this template")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Select template Scan Me" }));
+
+    expect((await screen.findAllByPlaceholderText("Type text for this template")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/^Text size \(/i)).toBeInTheDocument();
   });
 });

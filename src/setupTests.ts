@@ -12,3 +12,13 @@ window.matchMedia = window.matchMedia || function() {
       removeListener: function() {}
   };
 };
+
+if (typeof window.ResizeObserver === 'undefined') {
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+}

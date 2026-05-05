@@ -18,6 +18,7 @@ import {
   IonToggle,
   IonSelect,
   IonSelectOption,
+  IonRange,
 } from "@ionic/react";
 import { useHistory } from "react-router";
 import { customAlphabet } from "nanoid";
@@ -64,6 +65,20 @@ type Props = {
 type RailStage = "import" | "compose" | "render" | "export";
 
 const FREE_SCAN_LIMIT = 20;
+
+function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Record<string, string> {
+  const defaults = template.fields.reduce<Record<string, string>>((acc, item) => {
+    acc[item.key] = item.defaultValue;
+    return acc;
+  }, {});
+
+  if (template.ctaConfig) {
+    defaults[template.ctaConfig.fieldKey] = defaults[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
+    defaults[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx);
+  }
+
+  return defaults;
+}
 
 const RAIL_STAGES: Array<{ key: RailStage; label: string; hint: string }> = [
   { key: "import", label: "Import URL", hint: "Generate short URL + QR" },
@@ -120,40 +135,37 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }, [composedPreviewUrl, modelPreviewReady, qrDataUrl]);
 
   useEffect(() => {
-    const defaults = selectedTemplate.fields.reduce<Record<string, string>>((acc, item) => {
-      acc[item.key] = item.defaultValue;
-      return acc;
-    }, {});
+    const defaults = buildTemplateDefaults(selectedTemplate);
     setTemplateValues(defaults);
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
   }, [selectedTemplate]);
 
-  // Auto-compose preview when a template is selected (if QR is already generated)
+  // Auto-compose preview when template or text settings change (if QR is already generated)
   useEffect(() => {
     if (!qrDataUrl || !generated) return;
     setActiveRailStage("compose");
-    setComposedPreviewUrl("");
     setModelPreviewReady(false);
-    const defaults = selectedTemplate.fields.reduce<Record<string, string>>((acc, item) => {
-      acc[item.key] = item.defaultValue;
-      return acc;
-    }, {});
-    (async () => {
-      try {
-        const image = await composeTemplatePreview({
-          template: selectedTemplate,
-          values: defaults,
-          qrDataUrl,
-          shortUrl: generated.shortUrl,
-        });
-        setComposedPreviewUrl(image);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not compose template preview.");
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplateId]);
+    const timeoutId = window.setTimeout(() => {
+      (async () => {
+        try {
+          const image = await composeTemplatePreview({
+            template: selectedTemplate,
+            values: templateValues,
+            qrDataUrl,
+            shortUrl: generated.shortUrl,
+          });
+          setComposedPreviewUrl(image);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not compose template preview.");
+        }
+      })();
+    }, 60);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [generated, qrDataUrl, selectedTemplate, templateValues]);
 
   useEffect(() => {
     setRecentByUser(listShortUrlsByUser(user?.id));
@@ -235,32 +247,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus("Step 1 complete. Preview your QR code, then compose the template preview.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate QR.");
-    }
-  }
-
-  async function handleComposePreview() {
-    setError("");
-    setStatus("");
-
-    if (!generated || !qrDataUrl) {
-      setError("Generate a QR code first.");
-      return;
-    }
-
-    try {
-      const image = await composeTemplatePreview({
-        template: selectedTemplate,
-        values: templateValues,
-        qrDataUrl,
-        shortUrl: generated.shortUrl,
-      });
-
-      setComposedPreviewUrl(image);
-      setModelPreviewReady(false);
-      setActiveRailStage("render");
-      setStatus("Step 2 complete. Generate the 3D model preview next.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not compose template preview.");
     }
   }
 
@@ -868,13 +854,77 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <strong>{selectedTemplate.name}</strong>
                       <span>{selectedTemplate.description}</span>
                       <small>
-                        QR only for now. {selectedTemplate.ctaLabel ? `This version includes a fixed "${selectedTemplate.ctaLabel}" callout.` : "Text stays off unless we add a text-capable layout later."}
+                        {selectedTemplate.ctaConfig
+                          ? "Customize the tag label and text size, then compose preview to apply it."
+                          : selectedTemplate.ctaLabel
+                            ? `This version keeps a fixed "${selectedTemplate.ctaLabel}" callout.`
+                            : "No text callout for this template."}
                       </small>
                     </div>
 
-                    <IonText color="medium">
-                      <p className="template-empty-note">No text fields yet. Pick the border style you want and generate the QR.</p>
-                    </IonText>
+                    {selectedTemplate.fields.length > 0 ? (
+                      <div className="template-fields-shell">
+                        {selectedTemplate.fields.map((field) => (
+                          <IonItem key={field.key} className="editor-item">
+                            <IonLabel position="stacked">{field.label}</IonLabel>
+                            <IonInput
+                              value={templateValues[field.key] ?? field.defaultValue}
+                              placeholder={field.placeholder}
+                              onIonInput={(e) => {
+                                const nextValue = (e.detail.value ?? "").toString();
+                                setTemplateValues((prev) => ({ ...prev, [field.key]: nextValue }));
+                              }}
+                            />
+                          </IonItem>
+                        ))}
+
+                        {selectedTemplate.ctaConfig ? (
+                          <IonItem className="editor-item" lines="none">
+                            <IonLabel position="stacked">
+                              Text size ({Math.round(
+                                Math.min(
+                                  selectedTemplate.ctaConfig.maxSizePx,
+                                  Math.max(
+                                    selectedTemplate.ctaConfig.minSizePx,
+                                    Number(templateValues[selectedTemplate.ctaConfig.sizeKey]) || selectedTemplate.ctaConfig.defaultSizePx
+                                  )
+                                )
+                              )} px)
+                            </IonLabel>
+                            <IonRange
+                              min={selectedTemplate.ctaConfig.minSizePx}
+                              max={selectedTemplate.ctaConfig.maxSizePx}
+                              step={1}
+                              snaps
+                              pin
+                              value={Math.min(
+                                selectedTemplate.ctaConfig.maxSizePx,
+                                Math.max(
+                                  selectedTemplate.ctaConfig.minSizePx,
+                                  Number(templateValues[selectedTemplate.ctaConfig.sizeKey]) || selectedTemplate.ctaConfig.defaultSizePx
+                                )
+                              )}
+                              onIonChange={(e) => {
+                                const raw = Number(e.detail.value);
+                                if (!Number.isFinite(raw)) return;
+                                const clamped = Math.min(
+                                  selectedTemplate.ctaConfig!.maxSizePx,
+                                  Math.max(selectedTemplate.ctaConfig!.minSizePx, Math.round(raw))
+                                );
+                                setTemplateValues((prev) => ({
+                                  ...prev,
+                                  [selectedTemplate.ctaConfig!.sizeKey]: String(clamped),
+                                }));
+                              }}
+                            />
+                          </IonItem>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <IonText color="medium">
+                        <p className="template-empty-note">No text fields for this template. Pick the border style you want and generate the QR.</p>
+                      </IonText>
+                    )}
                   </div>
 
                   <IonText>

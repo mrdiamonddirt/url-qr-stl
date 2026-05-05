@@ -63,11 +63,20 @@ export async function getUserShortUrls(userId: string): Promise<SupabaseShortUrl
   if (!supabase) return [];
   const { data } = await supabase
     .from("short_urls")
-    .select("short_code, original_url, scan_count, created_at")
+    .select("id, short_code, original_url, scan_count, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(20);
   return (data as SupabaseShortUrlRow[]) ?? [];
+}
+
+export async function deleteShortUrl(shortCode: string, userId: string): Promise<void> {
+  if (!supabase) return;
+  await supabase
+    .from("short_urls")
+    .delete()
+    .eq("short_code", shortCode)
+    .eq("user_id", userId);
 }
 
 export async function recordScan(

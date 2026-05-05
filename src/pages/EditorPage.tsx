@@ -31,6 +31,7 @@ import {
   personCircleOutline,
   prismOutline,
   sparklesOutline,
+  trashOutline,
 } from "ionicons/icons";
 import { TEMPLATE_PRESETS } from "../constants/templates";
 import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
@@ -39,7 +40,7 @@ import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../li
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
-import { createCheckoutSession, getUserShortUrls, signOut, supabase } from "../lib/supabaseClient";
+import { createCheckoutSession, deleteShortUrl, getUserShortUrls, signOut, supabase } from "../lib/supabaseClient";
 import { ModelFormat, Profile, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
@@ -64,6 +65,9 @@ type Props = {
 type RailStage = "import" | "compose" | "render" | "export";
 
 const FREE_SCAN_LIMIT = 20;
+const FREE_TAG_LIMIT = 3;
+const PREMIUM_TAG_LIMIT = 20;
+const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
 
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
@@ -137,7 +141,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const planLabel = profile?.plan === "premium" ? "Premium" : "Free";
   const accountTriggerLabel = user ? (user.email ?? "Account") : "Account";
   const accountInitials = useMemo(() => {
-    const source = user?.email?.trim() || "URL 2 SQL";
+    const source = user?.email?.trim() || "URL 2 STL";
     const segments = source.split(/[@.\s_-]+/).filter(Boolean);
     return segments.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U2";
   }, [user?.email]);
@@ -239,9 +243,25 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     };
   }, []);
 
+  async function handleDeleteTag(shortCode: string) {
+    if (!user) return;
+    await deleteShortUrl(shortCode, user.id);
+    setSupabaseHistory((prev) => prev.filter((row) => row.short_code !== shortCode));
+  }
+
   async function handleGenerateQr() {
     setError("");
     setStatus("");
+
+    const tagLimit = profile?.plan === "premium" ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT;
+    if (user && supabaseHistory.length >= tagLimit) {
+      setError(
+        profile?.plan === "premium"
+          ? `You have reached the ${PREMIUM_TAG_LIMIT}-tag limit for Premium accounts.`
+          : `Free accounts are limited to ${FREE_TAG_LIMIT} active tags. Delete a tag or upgrade to Premium for up to ${PREMIUM_TAG_LIMIT} tags.`
+      );
+      return;
+    }
 
     try {
       const normalized = ensureHttpUrl(sourceUrl);
@@ -435,7 +455,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="editor-toolbar__brand">
               <div className="editor-toolbar__mark">U2S</div>
               <div className="editor-toolbar__brand-copy">
-                <div className="editor-toolbar__title">URL 2 SQL</div>
+                <div className="editor-toolbar__title">URL 2 STL</div>
                 <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
               </div>
             </div>
@@ -480,8 +500,18 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               <div className="account-drawer__section">
                 <div className="account-stat-card">
                   <span>Subscription</span>
-                  <strong>{profile?.plan === "premium" ? "Unlimited scans and exports" : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
+                  <strong>{profile?.plan === "premium" ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
                 </div>
+                <div className="account-stat-card">
+                  <span>Active tags</span>
+                  <strong>{supabaseHistory.length} / {profile?.plan === "premium" ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT}</strong>
+                </div>
+                {profile?.plan === "premium" && (
+                  <div className="account-stat-card">
+                    <span>Scans this month</span>
+                    <strong>{(profile.monthly_scans ?? 0).toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()}</strong>
+                  </div>
+                )}
                 <div className="account-stat-card">
                   <span>Status</span>
                   <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
@@ -528,7 +558,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         <div className="editor-layout">
           <section className="editor-hero">
             <div className="editor-hero__content">
-              <p className="hero-kicker">URL 2 SQL Studio</p>
+              <p className="hero-kicker">URL 2 STL Studio</p>
               <div className="hero-heading-group">
                 <h1>Create polished QR tags for print, product packaging, and 3D output.</h1>
                 <p className="hero-subtitle">One workspace for short links, branded QR layouts, and export-ready geometry.</p>
@@ -688,7 +718,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   {user && profile?.plan === "free" && (
                     <IonCard color="warning" style={{ marginBottom: 12 }}>
                       <IonCardContent>
-                        <strong>Free plan:</strong> each link allows {FREE_SCAN_LIMIT} scans.
+                        <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
                         {" "}
                         <IonButton size="small" onClick={handleUpgrade}>
                           Upgrade to Premium – £3.99/mo
@@ -716,6 +746,21 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
                             </IonBadge>
                           </button>
+                          {user && (
+                            <button
+                              type="button"
+                              className="history-delete-btn"
+                              aria-label={`Delete tag ${row.short_code}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete tag ${row.short_code}? Existing scan links will stop working.`)) {
+                                  void handleDeleteTag(row.short_code);
+                                }
+                              }}
+                            >
+                              <IonIcon icon={trashOutline} />
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>

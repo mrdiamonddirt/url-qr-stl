@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#1a1a2e"/>
+
+  <!-- QR corner square: top-left -->
+  <rect x="3" y="3" width="9" height="9" rx="1.5" fill="#5b6af5"/>
+  <rect x="5" y="5" width="5" height="5" rx="0.5" fill="#1a1a2e"/>
+
+  <!-- QR corner square: top-right -->
+  <rect x="20" y="3" width="9" height="9" rx="1.5" fill="#5b6af5"/>
+  <rect x="22" y="5" width="5" height="5" rx="0.5" fill="#1a1a2e"/>
+
+  <!-- QR corner square: bottom-left -->
+  <rect x="3" y="20" width="9" height="9" rx="1.5" fill="#5b6af5"/>
+  <rect x="5" y="22" width="5" height="5" rx="0.5" fill="#1a1a2e"/>
+
+  <!-- QR data dots (centre area) -->
+  <rect x="14" y="3" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="14" y="7" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="3"  y="14" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="7"  y="14" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="14" y="14" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="20" y="14" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="26" y="14" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="14" y="20" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="20" y="20" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="26" y="26" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="20" y="26" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+  <rect x="14" y="26" width="2.5" height="2.5" rx="0.5" fill="#a0a8ff"/>
+</svg>

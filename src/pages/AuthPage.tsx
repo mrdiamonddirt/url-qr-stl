@@ -51,7 +51,7 @@ const AuthPage: React.FC<Props> = ({ user }) => {
     <IonPage>
       <IonHeader>
         <IonToolbar className="auth-toolbar">
-          <IonTitle className="premium-toolbar-title">URL 2 SQL</IonTitle>
+          <IonTitle className="premium-toolbar-title">URL 2 STL</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="auth-shell" fullscreen>
@@ -60,7 +60,7 @@ const AuthPage: React.FC<Props> = ({ user }) => {
             <p className="auth-kicker">Account access</p>
             <h1>Sign in to sync exports, manage plan status, and unlock downloads.</h1>
             <p>
-              URL 2 SQL keeps the editor open to everyone, then adds account-backed history, export access, and premium controls when you authenticate.
+              URL 2 STL keeps the editor open to everyone, then adds account-backed history, export access, and premium controls when you authenticate.
             </p>
             <div className="auth-feature-list">
               <div>
@@ -76,7 +76,7 @@ const AuthPage: React.FC<Props> = ({ user }) => {
 
           <IonCard className="auth-card auth-card--polished">
             <IonCardHeader>
-              <IonCardTitle>Continue to URL 2 SQL</IonCardTitle>
+              <IonCardTitle>Continue to URL 2 STL</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
               <p className="auth-card__copy">Use Google to access saved history, premium plan controls, and model downloads.</p>

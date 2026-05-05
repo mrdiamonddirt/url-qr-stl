@@ -84,10 +84,13 @@ export type Profile = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_ends_at: string | null;
+  monthly_scans: number;
+  monthly_reset_at: string | null;
   created_at: string;
 };
 
 export type SupabaseShortUrlRow = {
+  id: string;
   short_code: string;
   original_url: string;
   scan_count: number;

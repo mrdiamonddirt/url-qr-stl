@@ -9,7 +9,7 @@ const AppFooter: React.FC = () => (
     <IonText color="medium">
       <div className="app-footer__inner">
         <div>
-          <p className="app-footer__brand">URL 2 SQL</p>
+          <p className="app-footer__brand">URL 2 STL</p>
           <p className="app-footer__copy">Premium QR tags, short links, and 3D-ready exports for physical products.</p>
         </div>
         <div className="app-footer__meta">

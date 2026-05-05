@@ -49,14 +49,17 @@ const RedirectPage: React.FC = () => {
       <IonPage>
         <IonContent className="ion-padding">
           <IonText>
-            <h2>Scan limit reached</h2>
+            <h2>Tag deactivated</h2>
             <p>
-              This QR tag has reached its {SCAN_LIMIT} free scans. The owner needs to
-              upgrade to a Premium account to restore this link.
+              This QR tag has used all {SCAN_LIMIT} free scans. The owner needs to upgrade
+              to a Premium account to reactivate this link and unlock 10,000 monthly scans.
             </p>
           </IonText>
-          <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" fill="outline">
-            Learn more about Premium
+          <IonButton href={`${window.location.origin.replace(/\/s\/.*$/, "")}/editor`} fill="solid">
+            Upgrade to Premium
+          </IonButton>
+          <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" fill="outline" style={{ marginTop: 8 }}>
+            Learn more
           </IonButton>
         </IonContent>
       </IonPage>

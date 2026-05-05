@@ -3,6 +3,7 @@ import { IonButton, IonContent, IonPage, IonSpinner, IonText } from "@ionic/reac
 import { useParams } from "react-router";
 import { findShortUrlByCode } from "../lib/storage";
 import { recordScan } from "../lib/supabaseClient";
+import "./RedirectPage.css";
 
 const SCAN_LIMIT = 20;
 
@@ -67,10 +68,29 @@ const RedirectPage: React.FC = () => {
   }
 
   if (error === "not_found") {
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const appHomeHref = `${window.location.origin}${base}/editor`;
+
     return (
       <IonPage>
-        <IonContent className="ion-padding">
-          <IonText color="danger"><p>Short link not found.</p></IonText>
+        <IonContent className="redirect-not-found">
+          <div className="redirect-not-found__backdrop" />
+          <section className="redirect-not-found__panel ion-padding">
+            <p className="redirect-not-found__eyebrow">Short Link Missing</p>
+            <h1>Sign in to generate and manage short links.</h1>
+            <p>
+              This short link could not be found. To create working links that can be tested
+              from any device, sign in and generate your QR tag from the editor.
+            </p>
+            <div className="redirect-not-found__actions">
+              <IonButton expand="block" routerLink="/auth">
+                Sign In Now
+              </IonButton>
+              <IonButton expand="block" fill="outline" href={appHomeHref}>
+                Back to URL 2 STL
+              </IonButton>
+            </div>
+          </section>
         </IonContent>
       </IonPage>
     );

@@ -109,7 +109,7 @@ const App: React.FC = () => {
             <Redirect to="/editor" />
           </Route>
         </IonRouterOutlet>
-      </IonReactRouter>
+      </IonReactHashRouter>
     </IonApp>
   );
 };

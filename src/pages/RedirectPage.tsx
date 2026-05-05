@@ -46,22 +46,29 @@ const RedirectPage: React.FC = () => {
   }, [code]);
 
   if (error === "limit_reached") {
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const editorHref = `${window.location.origin}${base}/editor`;
+
     return (
       <IonPage>
-        <IonContent className="ion-padding">
-          <IonText>
-            <h2>Tag deactivated</h2>
+        <IonContent className="redirect-not-found">
+          <div className="redirect-not-found__backdrop" />
+          <section className="redirect-not-found__panel ion-padding">
+            <p className="redirect-not-found__eyebrow">Scan Limit Reached</p>
+            <h1>Tag deactivated after {SCAN_LIMIT} free scans.</h1>
             <p>
-              This QR tag has used all {SCAN_LIMIT} free scans. The owner needs to upgrade
-              to a Premium account to reactivate this link and unlock 10,000 monthly scans.
+              This QR tag has used all free scans. The owner needs to upgrade to a Premium
+              account to reactivate this link and unlock 10,000 monthly scans.
             </p>
-          </IonText>
-          <IonButton href={`${window.location.origin.replace(/\/s\/.*$/, "")}/editor`} fill="solid">
-            Upgrade to Premium
-          </IonButton>
-          <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" fill="outline" style={{ marginTop: 8 }}>
-            Learn more
-          </IonButton>
+            <div className="redirect-not-found__actions">
+              <IonButton href={editorHref} expand="block" fill="solid">
+                Upgrade to Premium
+              </IonButton>
+              <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" expand="block" fill="outline">
+                Learn More
+              </IonButton>
+            </div>
+          </section>
         </IonContent>
       </IonPage>
     );

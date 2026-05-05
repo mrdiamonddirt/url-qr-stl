@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   IonBadge,
   IonButton,
@@ -66,6 +66,7 @@ const FREE_SCAN_LIMIT = 20;
 
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
+  const headerRef = useRef<HTMLElement | null>(null);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(TEMPLATE_PRESETS[0].id);
@@ -113,6 +114,33 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setSupabaseHistory([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    const headerEl = headerRef.current;
+    if (!headerEl) {
+      return;
+    }
+
+    const applyHeaderHeight = () => {
+      const measured = Math.round(headerEl.getBoundingClientRect().height);
+      const safeHeight = Number.isFinite(measured) && measured > 0 ? measured : 88;
+      document.documentElement.style.setProperty("--editor-header-height", `${safeHeight}px`);
+    };
+
+    applyHeaderHeight();
+
+    const observer = new ResizeObserver(() => {
+      applyHeaderHeight();
+    });
+    observer.observe(headerEl);
+
+    window.addEventListener("resize", applyHeaderHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", applyHeaderHeight);
+    };
+  }, []);
 
   async function handleGenerateQr() {
     setError("");
@@ -271,9 +299,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
   }
 
+  function toggleAccountPanel() {
+    setAccountPanelOpen((current) => !current);
+  }
+
   return (
     <IonPage>
-      <IonHeader className="editor-header">
+      <IonHeader className="editor-header" ref={(node) => { headerRef.current = node as unknown as HTMLElement | null; }}>
         <IonToolbar className="editor-toolbar">
           <div className="editor-toolbar__brand">
             <div className="editor-toolbar__mark">U2S</div>
@@ -291,9 +323,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             )}
             <button
               type="button"
-              className="account-trigger"
-              onClick={() => setAccountPanelOpen(true)}
+              className={`account-trigger ${accountPanelOpen ? "is-open" : ""}`}
+              onClick={toggleAccountPanel}
               aria-label="Open account panel"
+              aria-expanded={accountPanelOpen}
             >
               <span className="account-trigger__avatar">{accountInitials}</span>
               <span className="account-trigger__copy">
@@ -316,50 +349,53 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               <p className="account-drawer__plan">{planLabel} plan</p>
             </div>
           </div>
+          <div className="account-drawer__scroll-shell">
+            <div className="account-drawer__body">
+              <div className="account-drawer__section">
+                <div className="account-stat-card">
+                  <span>Subscription</span>
+                  <strong>{profile?.plan === "premium" ? "Unlimited scans and exports" : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
+                </div>
+                <div className="account-stat-card">
+                  <span>Status</span>
+                  <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
+                </div>
+              </div>
 
-          <div className="account-drawer__section">
-            <div className="account-stat-card">
-              <span>Subscription</span>
-              <strong>{profile?.plan === "premium" ? "Unlimited scans and exports" : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
-            </div>
-            <div className="account-stat-card">
-              <span>Status</span>
-              <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
-            </div>
-          </div>
+              <div className="account-drawer__section account-drawer__links">
+                <button type="button" className="account-link" onClick={() => setAccountPanelOpen(false)}>
+                  <IonIcon icon={personCircleOutline} />
+                  <span>Workspace overview</span>
+                </button>
+                <button type="button" className="account-link" onClick={() => history.push("/terms")}>
+                  <IonIcon icon={openOutline} />
+                  <span>Terms and policies</span>
+                </button>
+              </div>
 
-          <div className="account-drawer__section account-drawer__links">
-            <button type="button" className="account-link" onClick={() => setAccountPanelOpen(false)}>
-              <IonIcon icon={personCircleOutline} />
-              <span>Workspace overview</span>
-            </button>
-            <button type="button" className="account-link" onClick={() => history.push("/terms")}>
-              <IonIcon icon={openOutline} />
-              <span>Terms and policies</span>
-            </button>
-          </div>
-
-          <div className="account-drawer__section">
-            {user ? (
-              <>
-                {profile?.plan !== "premium" && (
-                  <IonButton expand="block" onClick={handleUpgrade}>
-                    Upgrade to Premium
+              <div className="account-drawer__section">
+                {user ? (
+                  <>
+                    {profile?.plan !== "premium" && (
+                      <IonButton expand="block" onClick={handleUpgrade}>
+                        Upgrade to Premium
+                      </IonButton>
+                    )}
+                    <IonButton expand="block" fill="outline" onClick={handleSignOut}>
+                      <IonIcon slot="start" icon={logOutOutline} />
+                      Sign out
+                    </IonButton>
+                  </>
+                ) : (
+                  <IonButton expand="block" onClick={() => history.push("/auth")}>
+                    Sign in to your account
                   </IonButton>
                 )}
-                <IonButton expand="block" fill="outline" onClick={handleSignOut}>
-                  <IonIcon slot="start" icon={logOutOutline} />
-                  Sign out
+                <IonButton expand="block" fill="clear" onClick={() => setAccountPanelOpen(false)}>
+                  Close panel
                 </IonButton>
-              </>
-            ) : (
-              <IonButton expand="block" onClick={() => history.push("/auth")}>
-                Sign in to your account
-              </IonButton>
-            )}
-            <IonButton expand="block" fill="clear" onClick={() => setAccountPanelOpen(false)}>
-              Close panel
-            </IonButton>
+              </div>
+            </div>
           </div>
         </aside>
 

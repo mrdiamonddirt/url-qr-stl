@@ -1,5 +1,8 @@
-.editor-header {
+:root {
   --editor-header-height: 88px;
+}
+
+.editor-header {
   position: sticky;
   top: 0;
   z-index: 120;
@@ -39,11 +42,13 @@
 }
 
 .editor-toolbar__title {
-  font-size: 1.08rem;
+  font-size: clamp(1.02rem, 0.8vw, 1.16rem);
   font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   line-height: 1.1;
+  text-transform: uppercase;
   color: #f8fbff;
+  text-shadow: 0 1px 0 rgba(2, 7, 14, 0.34);
 }
 
 .editor-toolbar__brand-copy {
@@ -51,9 +56,12 @@
 }
 
 .editor-toolbar__subtitle {
-  margin: 2px 0 0;
-  font-size: 0.78rem;
-  color: rgba(232, 240, 252, 0.72);
+  margin: 3px 0 0;
+  max-width: 44ch;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(232, 240, 252, 0.78);
   line-height: 1.45;
 }
 
@@ -123,6 +131,13 @@
   font: inherit;
   text-align: left;
   box-shadow: 0 10px 24px rgba(4, 11, 22, 0.16);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.account-trigger.is-open {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(139, 240, 203, 0.34);
+  box-shadow: 0 14px 30px rgba(4, 11, 22, 0.24);
 }
 
 .account-trigger__avatar {
@@ -168,11 +183,17 @@
   flex: 0 0 auto;
   font-size: 1rem;
   color: rgba(248, 251, 255, 0.78);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.account-trigger.is-open ion-icon {
+  transform: rotate(180deg);
+  color: #8bf0cb;
 }
 
 .account-drawer-backdrop {
   position: fixed;
-  top: var(--editor-header-height);
+  top: var(--editor-header-height, 88px);
   right: 0;
   bottom: 0;
   left: 0;
@@ -180,7 +201,7 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.24s ease;
-  z-index: 210;
+  z-index: 110;
 }
 
 .account-drawer-backdrop.is-open {
@@ -190,9 +211,9 @@
 
 .account-drawer {
   position: fixed;
-  top: var(--editor-header-height);
+  top: var(--editor-header-height, 88px);
   right: 0;
-  height: calc(100vh - var(--editor-header-height));
+  height: calc(100dvh - var(--editor-header-height, 88px));
   width: min(380px, calc(100vw - 20px));
   padding: 24px 22px 24px;
   background: rgba(8, 18, 33, 0.985);
@@ -201,14 +222,83 @@
   border-top-left-radius: 24px;
   transform: translateX(100%);
   transition: transform 0.24s ease;
-  z-index: 220;
-  display: grid;
-  align-content: start;
+  z-index: 115;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
+  overflow: hidden;
 }
 
 .account-drawer.is-open {
   transform: translateX(0);
+}
+
+.account-drawer__scroll-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.account-drawer__scroll-shell::before,
+.account-drawer__scroll-shell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.account-drawer__scroll-shell::before {
+  top: 0;
+  background: linear-gradient(180deg, rgba(8, 18, 33, 0.95) 0%, rgba(8, 18, 33, 0) 100%);
+}
+
+.account-drawer__scroll-shell::after {
+  bottom: 0;
+  background: linear-gradient(0deg, rgba(8, 18, 33, 0.97) 0%, rgba(8, 18, 33, 0) 100%);
+}
+
+.account-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding: 2px 6px 10px 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(151, 244, 211, 0.72) rgba(255, 255, 255, 0.12);
+}
+
+.account-drawer__body::-webkit-scrollbar {
+  width: 11px;
+}
+
+.account-drawer__body::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border-radius: 999px;
+}
+
+.account-drawer__body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(125, 200, 255, 0.9) 0%, rgba(149, 244, 211, 0.94) 100%);
+  border-radius: 999px;
+  border: 2px solid rgba(8, 18, 33, 0.9);
+  box-shadow: 0 0 0 1px rgba(9, 17, 29, 0.18);
+}
+
+.account-drawer__body::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(148, 213, 255, 0.98) 0%, rgba(167, 248, 220, 0.98) 100%);
+}
+
+.account-drawer__body::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, rgba(110, 188, 250, 0.96) 0%, rgba(136, 236, 198, 0.96) 100%);
 }
 
 .account-drawer__header {
@@ -294,7 +384,7 @@
 .editor-layout {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 32px 24px 36px;
+  padding: 42px 24px 36px;
 }
 
 .editor-hero {
@@ -880,10 +970,6 @@
 }
 
 @media (max-width: 768px) {
-  .editor-header {
-    --editor-header-height: 128px;
-  }
-
   .editor-toolbar {
     padding: 10px 12px;
     --min-height: 76px;
@@ -913,8 +999,13 @@
     display: none;
   }
 
+  .editor-toolbar__title {
+    font-size: clamp(0.96rem, 3.5vw, 1.08rem);
+    letter-spacing: 0.07em;
+  }
+
   .editor-layout {
-    padding: 18px 14px 28px;
+    padding: 28px 14px 28px;
   }
 
   .editor-hero__content,
@@ -948,6 +1039,10 @@
   .account-drawer {
     width: 100%;
     border-top-left-radius: 0;
+  }
+
+  .account-drawer__body {
+    padding-right: 2px;
   }
 
   .stl-grid {

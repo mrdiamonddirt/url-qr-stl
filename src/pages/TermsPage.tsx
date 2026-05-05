@@ -9,17 +9,18 @@ import {
   IonButtons,
 } from "@ionic/react";
 import AppFooter from "../components/AppFooter";
+import "./TermsPage.css";
 
 const YEAR = new Date().getFullYear();
 
 const TermsPage: React.FC = () => (
   <IonPage>
     <IonHeader>
-      <IonToolbar>
+      <IonToolbar className="terms-toolbar">
         <IonButtons slot="start">
           <IonBackButton defaultHref="/editor" />
         </IonButtons>
-        <IonTitle>Terms &amp; Conditions</IonTitle>
+        <IonTitle className="premium-toolbar-title">Terms &amp; Conditions</IonTitle>
       </IonToolbar>
     </IonHeader>
     <IonContent className="ion-padding">

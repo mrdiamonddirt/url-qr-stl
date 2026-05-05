@@ -51,7 +51,7 @@ const AuthPage: React.FC<Props> = ({ user }) => {
     <IonPage>
       <IonHeader>
         <IonToolbar className="auth-toolbar">
-          <IonTitle>URL 2 SQL</IonTitle>
+          <IonTitle className="premium-toolbar-title">URL 2 SQL</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="auth-shell" fullscreen>

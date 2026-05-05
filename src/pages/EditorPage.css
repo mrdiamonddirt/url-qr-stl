@@ -1306,3 +1306,63 @@
     min-height: 56px;
   }
 }
+
+/* Loop preview — overlay Controls box inside the preview window */
+.loop-preview-box {
+  position: relative;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.loop-preview-box img {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  object-fit: contain;
+}
+
+.loop-controls-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 170px;
+  background: rgba(10, 21, 38, 0.82);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+}
+
+.loop-controls-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 4px;
+}
+
+.loop-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  gap: 4px;
+}
+
+.loop-slider-value {
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+}
+
+.loop-controls-overlay input[type="range"] {
+  width: 100%;
+  accent-color: #4fa3f7;
+  cursor: pointer;
+}

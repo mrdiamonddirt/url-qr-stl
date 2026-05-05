@@ -86,6 +86,16 @@ function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Rec
     defaults[template.ctaConfig.chipHeightKey] = String(template.ctaConfig.chipHeight);
   }
 
+  if (template.loopConfig) {
+    defaults.loop_outer_radius = String(template.loopConfig.outerRadius);
+    defaults.loop_stem_width = String(template.loopConfig.stemWidth);
+    defaults.loop_thickness = String(template.loopConfig.outerRadius - template.loopConfig.innerRadius);
+  }
+
+  if (template.borderStyle !== "none") {
+    defaults.border_thickness = template.borderStyle === "fancy" ? "8" : "6";
+  }
+
   return defaults;
 }
 
@@ -839,14 +849,72 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     {activeRailStage === "compose" && (
                       <>
                         <p className="stage-label">Compose template and QR</p>
-                        <div className="preview-box stage-preview-box">
+                        <div className="preview-box stage-preview-box loop-preview-box">
                           {composedPreviewUrl ? (
                             <img src={composedPreviewUrl} alt="Template and QR preview" />
                           ) : (
                             <span>Selecting a template auto-composes the preview once a QR is generated.</span>
                           )}
+                          {selectedTemplate.loopConfig && composedPreviewUrl && (
+                            <div className="loop-controls-overlay">
+                              <p className="loop-controls-title">Controls</p>
+                              <label className="loop-slider-label">
+                                <span>Loop height</span>
+                                <span className="loop-slider-value">{templateValues.loop_outer_radius ?? selectedTemplate.loopConfig.outerRadius}</span>
+                              </label>
+                              <input
+                                type="range" min={8} max={40} step={1}
+                                value={Number(templateValues.loop_outer_radius) || selectedTemplate.loopConfig.outerRadius}
+                                onChange={(e) => setTemplateValues((prev) => ({ ...prev, loop_outer_radius: e.target.value }))}
+                              />
+                              <label className="loop-slider-label">
+                                <span>Loop width</span>
+                                <span className="loop-slider-value">{templateValues.loop_stem_width ?? selectedTemplate.loopConfig.stemWidth}</span>
+                              </label>
+                              <input
+                                type="range" min={16} max={80} step={2}
+                                value={Number(templateValues.loop_stem_width) || selectedTemplate.loopConfig.stemWidth}
+                                onChange={(e) => setTemplateValues((prev) => ({ ...prev, loop_stem_width: e.target.value }))}
+                              />
+                              <label className="loop-slider-label">
+                                <span>Thickness</span>
+                                <span className="loop-slider-value">{templateValues.loop_thickness ?? (selectedTemplate.loopConfig.outerRadius - selectedTemplate.loopConfig.innerRadius)}</span>
+                              </label>
+                              <input
+                                type="range" min={3} max={20} step={1}
+                                value={Number(templateValues.loop_thickness) || (selectedTemplate.loopConfig.outerRadius - selectedTemplate.loopConfig.innerRadius)}
+                                onChange={(e) => setTemplateValues((prev) => ({ ...prev, loop_thickness: e.target.value }))}
+                              />
+                              {selectedTemplate.borderStyle !== "none" && (
+                                <>
+                                  <label className="loop-slider-label" style={{ marginTop: 6 }}>
+                                    <span>Border</span>
+                                    <span className="loop-slider-value">{templateValues.border_thickness ?? (selectedTemplate.borderStyle === "fancy" ? "8" : "6")}</span>
+                                  </label>
+                                  <input
+                                    type="range" min={1} max={20} step={1}
+                                    value={Number(templateValues.border_thickness) || (selectedTemplate.borderStyle === "fancy" ? 8 : 6)}
+                                    onChange={(e) => setTemplateValues((prev) => ({ ...prev, border_thickness: e.target.value }))}
+                                  />
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {!selectedTemplate.loopConfig && selectedTemplate.borderStyle !== "none" && composedPreviewUrl && (
+                            <div className="loop-controls-overlay">
+                              <p className="loop-controls-title">Controls</p>
+                              <label className="loop-slider-label">
+                                <span>Border thickness</span>
+                                <span className="loop-slider-value">{templateValues.border_thickness ?? (selectedTemplate.borderStyle === "fancy" ? "8" : "6")}</span>
+                              </label>
+                              <input
+                                type="range" min={1} max={20} step={1}
+                                value={Number(templateValues.border_thickness) || (selectedTemplate.borderStyle === "fancy" ? 8 : 6)}
+                                onChange={(e) => setTemplateValues((prev) => ({ ...prev, border_thickness: e.target.value }))}
+                              />
+                            </div>
+                          )}
                         </div>
-
                       </>
                     )}
 

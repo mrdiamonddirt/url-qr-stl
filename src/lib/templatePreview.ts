@@ -1,4 +1,4 @@
-import { QrTemplate } from "../types";
+import { QrTemplate, TemplateLoopConfig } from "../types";
 
 type ComposeTemplatePreviewInput = {
   template: QrTemplate;
@@ -109,12 +109,39 @@ function beginFramePath(
   ctx.closePath();
 }
 
-function getFrameStrokeWidth(template: QrTemplate, scale = 1): number {
+function resolveLoopConfig(
+  loop: TemplateLoopConfig,
+  values: Record<string, string>
+): { outerRadius: number; innerRadius: number; stemWidth: number; stemHeight: number; lift: number } {
+  const rawOuter = Number(values.loop_outer_radius);
+  const outerRadius = Number.isFinite(rawOuter) && rawOuter > 0
+    ? Math.min(40, Math.max(8, rawOuter))
+    : loop.outerRadius;
+
+  const rawStemWidth = Number(values.loop_stem_width);
+  const stemWidth = Number.isFinite(rawStemWidth) && rawStemWidth > 0
+    ? Math.min(80, Math.max(16, rawStemWidth))
+    : loop.stemWidth;
+
+  const defaultThickness = loop.outerRadius - loop.innerRadius;
+  const rawThickness = Number(values.loop_thickness);
+  const thickness = Number.isFinite(rawThickness) && rawThickness > 0
+    ? Math.min(20, Math.max(3, rawThickness))
+    : defaultThickness;
+
+  const innerRadius = Math.max(2, outerRadius - thickness);
+  return { outerRadius, innerRadius, stemWidth, stemHeight: loop.stemHeight, lift: loop.lift };
+}
+
+function getFrameStrokeWidth(template: QrTemplate, scale = 1, values?: Record<string, string>): number {
   if (template.borderStyle === "none") {
     return 0;
   }
 
-  const baseWidth = template.borderStyle === "fancy" ? 8 : 6;
+  const rawOverride = values ? Number(values.border_thickness) : NaN;
+  const baseWidth = Number.isFinite(rawOverride) && rawOverride > 0
+    ? Math.min(24, Math.max(1, rawOverride))
+    : (template.borderStyle === "fancy" ? 8 : 6);
   return baseWidth * scale;
 }
 
@@ -125,14 +152,15 @@ function strokeFrame(
   y: number,
   width: number,
   height: number,
-  scale = 1
+  scale = 1,
+  values?: Record<string, string>
 ) {
   if (template.borderStyle === "none") {
     return;
   }
 
   ctx.strokeStyle = template.accentColor;
-  ctx.lineWidth = getFrameStrokeWidth(template, scale);
+  ctx.lineWidth = getFrameStrokeWidth(template, scale, values);
   const outerInset = ctx.lineWidth / 2;
 
   beginFramePath(ctx, template, x, y, width, height, outerInset, scale);
@@ -167,12 +195,15 @@ function drawTopLoop(
   frameX: number,
   frameY: number,
   frameSize: number,
-  scale = 1
+  scale = 1,
+  values?: Record<string, string>
 ) {
-  const loop = template.loopConfig;
-  if (!loop) {
+  const loopTemplate = template.loopConfig;
+  if (!loopTemplate) {
     return;
   }
+
+  const loop = values ? resolveLoopConfig(loopTemplate, values) : loopTemplate;
 
   const centerX = frameX + frameSize / 2;
   const stemHeight = loop.stemHeight * scale;
@@ -432,7 +463,10 @@ function resolveCompositionLayout(
   const scale = canvasSize / BASE_CANVAS_SIZE;
   const frameInset = (template.borderStyle === "none" ? 32 : 22) * scale;
   const loopExtraTop = template.loopConfig
-    ? (template.loopConfig.outerRadius + template.loopConfig.stemHeight + template.loopConfig.lift + 10) * scale
+    ? (() => {
+        const resolved = resolveLoopConfig(template.loopConfig, values);
+        return (resolved.outerRadius + resolved.stemHeight + resolved.lift + 10) * scale;
+      })()
     : 0;
   const frameTop = frameInset + loopExtraTop;
   const frameBottom = canvasSize - frameInset;
@@ -547,8 +581,8 @@ export function composeTemplateSelectorPreview(
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
-  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale);
-  drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale);
+  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, resolvedValues);
+  drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, resolvedValues);
 
   ctx.save();
   beginFramePath(
@@ -598,8 +632,8 @@ export async function composeTemplatePreview({
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
-  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale);
-  drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale);
+  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, values);
+  drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, values);
 
   ctx.save();
   beginFramePath(

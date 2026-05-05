@@ -14,10 +14,19 @@ const TEMPLATE_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
   high: 216,
 };
 
+const TEMPLATE_EDGE_GUARD_PX = 2;
+
 type GridMask = {
   width: number;
   height: number;
   data: boolean[];
+};
+
+type MaskBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 };
 
 type ModelDimensions = {
@@ -25,13 +34,44 @@ type ModelDimensions = {
   heightMm: number;
 };
 
-type Rgb = {
-  red: number;
-  green: number;
-  blue: number;
+type ModelBuildOptions = {
+  dimensions?: ModelDimensions;
+  baseMask?: GridMask;
 };
 
-function cropMask(mask: GridMask, padding = 1): GridMask {
+type Run = {
+  startX: number;
+  length: number;
+};
+
+function collectRowRuns(mask: GridMask, row: number): Run[] {
+  const runs: Run[] = [];
+  let x = 0;
+
+  while (x < mask.width) {
+    while (x < mask.width && !mask.data[row * mask.width + x]) {
+      x += 1;
+    }
+
+    if (x >= mask.width) {
+      break;
+    }
+
+    const startX = x;
+    while (x < mask.width && mask.data[row * mask.width + x]) {
+      x += 1;
+    }
+
+    runs.push({
+      startX,
+      length: x - startX,
+    });
+  }
+
+  return runs;
+}
+
+function getMaskBounds(mask: GridMask): MaskBounds | null {
   let minX = mask.width;
   let minY = mask.height;
   let maxX = -1;
@@ -51,13 +91,22 @@ function cropMask(mask: GridMask, padding = 1): GridMask {
   }
 
   if (maxX < minX || maxY < minY) {
-    return mask;
+    return null;
   }
 
-  const left = Math.max(0, minX - padding);
-  const top = Math.max(0, minY - padding);
-  const right = Math.min(mask.width - 1, maxX + padding);
-  const bottom = Math.min(mask.height - 1, maxY + padding);
+  return {
+    left: minX,
+    top: minY,
+    right: maxX,
+    bottom: maxY,
+  };
+}
+
+function cropMaskToBounds(mask: GridMask, bounds: MaskBounds, padding = 0): GridMask {
+  const left = Math.max(0, bounds.left - padding);
+  const top = Math.max(0, bounds.top - padding);
+  const right = Math.min(mask.width - 1, bounds.right + padding);
+  const bottom = Math.min(mask.height - 1, bounds.bottom + padding);
   const width = right - left + 1;
   const height = bottom - top + 1;
   const data = new Array<boolean>(width * height).fill(false);
@@ -71,9 +120,9 @@ function cropMask(mask: GridMask, padding = 1): GridMask {
   return { width, height, data };
 }
 
-function createModelGroupFromGrid(mask: GridMask, params: StlParams, dimensions?: ModelDimensions): Group {
-  const modelWidthMm = dimensions?.widthMm ?? params.widthMm;
-  const modelHeightMm = dimensions?.heightMm ?? params.heightMm;
+function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: ModelBuildOptions): Group {
+  const modelWidthMm = options?.dimensions?.widthMm ?? params.widthMm;
+  const modelHeightMm = options?.dimensions?.heightMm ?? params.heightMm;
   const detailScale = DETAIL_SCALE[params.detail];
   const moduleWidth = modelWidthMm / mask.width;
   const moduleHeight = modelHeightMm / mask.height;
@@ -81,12 +130,34 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, dimensions?
   const group = new Group();
 
   if (params.baseMm > 0) {
-    const base = new Mesh(
-      new BoxGeometry(modelWidthMm, modelHeightMm, params.baseMm),
-      new MeshNormalMaterial()
-    );
-    base.position.set(0, 0, params.baseMm / 2);
-    group.add(base);
+    const baseMask = options?.baseMask;
+
+    if (baseMask && baseMask.width === mask.width && baseMask.height === mask.height) {
+      for (let y = 0; y < baseMask.height; y += 1) {
+        const runs = collectRowRuns(baseMask, y);
+        for (const run of runs) {
+          const baseVoxel = new Mesh(
+            new BoxGeometry(moduleWidth * run.length, moduleHeight, params.baseMm),
+            new MeshNormalMaterial()
+          );
+
+          const xPos =
+            -modelWidthMm / 2 +
+            moduleWidth * run.startX +
+            (moduleWidth * run.length) / 2;
+          const yPos = modelHeightMm / 2 - moduleHeight * y - moduleHeight / 2;
+          baseVoxel.position.set(xPos, yPos, params.baseMm / 2);
+          group.add(baseVoxel);
+        }
+      }
+    } else {
+      const base = new Mesh(
+        new BoxGeometry(modelWidthMm, modelHeightMm, params.baseMm),
+        new MeshNormalMaterial()
+      );
+      base.position.set(0, 0, params.baseMm / 2);
+      group.add(base);
+    }
   }
 
   const moduleDepth = raisedDepth;
@@ -125,36 +196,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("Could not read template preview image."));
     image.src = src;
   });
-}
-
-function getCornerAverageColor(pixels: Uint8ClampedArray, width: number, height: number): Rgb {
-  const corners = [
-    [0, 0],
-    [width - 1, 0],
-    [0, height - 1],
-    [width - 1, height - 1],
-  ] as const;
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-
-  for (const [x, y] of corners) {
-    const idx = (y * width + x) * 4;
-    red += pixels[idx];
-    green += pixels[idx + 1];
-    blue += pixels[idx + 2];
-  }
-
-  return {
-    red: red / corners.length,
-    green: green / corners.length,
-    blue: blue / corners.length,
-  };
-}
-
-function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.abs(a.red - b.red) + Math.abs(a.green - b.green) + Math.abs(a.blue - b.blue);
 }
 
 function removeTinyIslands(mask: GridMask, minArea: number): GridMask {
@@ -244,45 +285,79 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
     throw new Error("Canvas is unavailable in this browser.");
   }
 
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
   const pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
-  const background = getCornerAverageColor(pixels, sampleWidth, sampleHeight);
-  const data: boolean[] = new Array(sampleWidth * sampleHeight);
+  const detailData: boolean[] = new Array(sampleWidth * sampleHeight);
+  const baseData: boolean[] = new Array(sampleWidth * sampleHeight);
 
   for (let y = 0; y < sampleHeight; y += 1) {
     for (let x = 0; x < sampleWidth; x += 1) {
+      const isInEdgeGuard =
+        x < TEMPLATE_EDGE_GUARD_PX ||
+        y < TEMPLATE_EDGE_GUARD_PX ||
+        x >= sampleWidth - TEMPLATE_EDGE_GUARD_PX ||
+        y >= sampleHeight - TEMPLATE_EDGE_GUARD_PX;
+
+      if (isInEdgeGuard) {
+        detailData[y * sampleWidth + x] = false;
+        baseData[y * sampleWidth + x] = false;
+        continue;
+      }
+
       const idx = (y * sampleWidth + x) * 4;
       const red = pixels[idx];
       const green = pixels[idx + 1];
       const blue = pixels[idx + 2];
       const alpha = pixels[idx + 3];
-      const pixel = { red, green, blue };
       const luma = red * 0.299 + green * 0.587 + blue * 0.114;
-      const distanceFromBackground = colorDistance(pixel, background);
-      data[y * sampleWidth + x] = alpha > 18 && luma < 158 && distanceFromBackground > 32;
+      const isOpaque = alpha > 18;
+      baseData[y * sampleWidth + x] = isOpaque;
+      detailData[y * sampleWidth + x] = isOpaque && luma < 152;
     }
   }
 
-  const denoisedMask = removeTinyIslands(
+  const denoisedDetailMask = removeTinyIslands(
     {
       width: sampleWidth,
       height: sampleHeight,
-      data,
+      data: detailData,
     },
     6
   );
 
-  const croppedMask = cropMask(
-    denoisedMask,
-    3
+  const denoisedBaseMask = removeTinyIslands(
+    {
+      width: sampleWidth,
+      height: sampleHeight,
+      data: baseData,
+    },
+    48
   );
 
-  const widthRatio = croppedMask.width / sampleWidth;
-  const heightRatio = croppedMask.height / sampleHeight;
+  const bounds = getMaskBounds(denoisedBaseMask);
+  if (!bounds) {
+    return createModelGroupFromGrid(
+      {
+        width: sampleWidth,
+        height: sampleHeight,
+        data: denoisedDetailMask.data,
+      },
+      params
+    );
+  }
 
-  return createModelGroupFromGrid(croppedMask, params, {
-    widthMm: params.widthMm * widthRatio,
-    heightMm: params.heightMm * heightRatio,
+  const croppedBaseMask = cropMaskToBounds(denoisedBaseMask, bounds, 0);
+  const croppedDetailMask = cropMaskToBounds(denoisedDetailMask, bounds, 0);
+  const widthRatio = croppedBaseMask.width / sampleWidth;
+  const heightRatio = croppedBaseMask.height / sampleHeight;
+
+  return createModelGroupFromGrid(croppedDetailMask, params, {
+    dimensions: {
+      widthMm: params.widthMm * widthRatio,
+      heightMm: params.heightMm * heightRatio,
+    },
+    baseMask: croppedBaseMask,
   });
 }
 

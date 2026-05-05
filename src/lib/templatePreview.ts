@@ -52,17 +52,10 @@ function strokeFrame(
   }
 
   ctx.strokeStyle = template.accentColor;
-  ctx.lineWidth = template.borderStyle === "fancy" ? 8 : 6;
+  ctx.lineWidth = getFrameStrokeWidth(template);
+  const outerInset = ctx.lineWidth / 2;
 
-  if (template.frameStyle === "rounded") {
-    drawRoundedRect(ctx, x, y, width, height, 24);
-  } else if (template.frameStyle === "circle") {
-    drawRoundedRect(ctx, x, y, width, height, 100);
-  } else {
-    ctx.beginPath();
-    ctx.rect(x, y, width, height);
-    ctx.closePath();
-  }
+  beginFramePath(ctx, template, x, y, width, height, outerInset);
 
   ctx.stroke();
 
@@ -79,6 +72,43 @@ function strokeFrame(
     ctx.closePath();
   }
   ctx.stroke();
+}
+
+function getFrameStrokeWidth(template: QrTemplate): number {
+  if (template.borderStyle === "none") {
+    return 0;
+  }
+
+  return template.borderStyle === "fancy" ? 8 : 6;
+}
+
+function beginFramePath(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  inset = 0
+) {
+  const drawX = x + inset;
+  const drawY = y + inset;
+  const drawWidth = Math.max(0, width - inset * 2);
+  const drawHeight = Math.max(0, height - inset * 2);
+
+  if (template.frameStyle === "rounded") {
+    drawRoundedRect(ctx, drawX, drawY, drawWidth, drawHeight, 24);
+    return;
+  }
+
+  if (template.frameStyle === "circle") {
+    drawRoundedRect(ctx, drawX, drawY, drawWidth, drawHeight, 100);
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.rect(drawX, drawY, drawWidth, drawHeight);
+  ctx.closePath();
 }
 
 function drawTopLoop(
@@ -331,33 +361,43 @@ export async function composeTemplatePreview({
   const frameSize = Math.min(canvas.width - frameInset * 2, frameBottom - frameTop);
   const frameX = (canvas.width - frameSize) / 2;
   const frameY = frameTop;
+  const frameStrokeWidth = getFrameStrokeWidth(template);
+  const frameContentInset = frameStrokeWidth > 0 ? frameStrokeWidth / 2 + 1 : 0;
   const qrInset = template.borderStyle === "fancy" ? 38 : template.borderStyle === "simple" ? 28 : 20;
   const ctaLayout = resolveCtaLayout(ctx, template, values);
   const ctaGap = 12;
-  const chipY = ctaLayout ? canvas.height - ctaLayout.bottomInset - ctaLayout.chipHeight : null;
-  const qrY = frameY + qrInset;
-  const maxQrSizeFromFrame = frameSize - qrInset * 2;
+  const contentBottom = frameY + frameSize - frameContentInset;
+  const chipY = ctaLayout ? contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight : null;
+  const qrY = frameY + frameContentInset + qrInset;
+  const maxQrSizeFromFrame = frameSize - (frameContentInset + qrInset) * 2;
   const maxQrSizeFromCta = chipY === null ? maxQrSizeFromFrame : chipY - ctaGap - qrY;
   const qrSize = Math.max(0, Math.min(maxQrSizeFromFrame, maxQrSizeFromCta));
   const qrX = frameX + (frameSize - qrSize) / 2;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(frameX, frameY, frameSize, frameSize);
   strokeFrame(ctx, template, frameX, frameY, frameSize, frameSize);
   drawTopLoop(ctx, template, frameX, frameY, frameSize);
 
+  ctx.save();
+  beginFramePath(ctx, template, frameX, frameY, frameSize, frameSize, frameContentInset);
+  ctx.clip();
+
   ctx.fillStyle = "#ffffff";
   if (qrSize > 0) {
     ctx.fillRect(qrX, qrY, qrSize, qrSize);
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+    ctx.imageSmoothingEnabled = true;
   }
 
   if (chipY !== null) {
     drawEditableCtaLabel(ctx, template, values, canvas.width, chipY);
   }
+
+  ctx.restore();
 
   return canvas.toDataURL("image/png");
 }

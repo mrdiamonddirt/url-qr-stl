@@ -7,6 +7,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonPage,
   IonText,
   IonTitle,
@@ -14,7 +15,9 @@ import {
 } from "@ionic/react";
 import { useHistory } from "react-router";
 import { User } from "@supabase/supabase-js";
+import { logoGoogle, arrowBackOutline, lockClosedOutline } from "ionicons/icons";
 import { signInWithGoogle, supabase } from "../lib/supabaseClient";
+import "./AuthPage.css";
 
 type Props = {
   user: User | null;
@@ -47,25 +50,48 @@ const AuthPage: React.FC<Props> = ({ user }) => {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar>
-          <IonTitle>Sign in</IonTitle>
+        <IonToolbar className="auth-toolbar">
+          <IonTitle>URL 2 SQL</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <IonContent fullscreen>
-        <IonCard className="auth-card">
-          <IonCardHeader>
-            <IonCardTitle>Sign in</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonButton expand="block" onClick={handleGoogleSignIn}>
-              Sign in with Google
-            </IonButton>
-            <IonButton expand="block" fill="clear" onClick={() => history.push("/editor")}>
-              Back to Editor
-            </IonButton>
-            {error && <IonText color="danger"><p>{error}</p></IonText>}
-          </IonCardContent>
-        </IonCard>
+      <IonContent className="auth-shell" fullscreen>
+        <div className="auth-layout">
+          <section className="auth-hero">
+            <p className="auth-kicker">Account access</p>
+            <h1>Sign in to sync exports, manage plan status, and unlock downloads.</h1>
+            <p>
+              URL 2 SQL keeps the editor open to everyone, then adds account-backed history, export access, and premium controls when you authenticate.
+            </p>
+            <div className="auth-feature-list">
+              <div>
+                <IonIcon icon={lockClosedOutline} />
+                <span>Google sign-in with Supabase-backed account state.</span>
+              </div>
+              <div>
+                <IonIcon icon={arrowBackOutline} />
+                <span>Return straight to the editor flow after authentication.</span>
+              </div>
+            </div>
+          </section>
+
+          <IonCard className="auth-card auth-card--polished">
+            <IonCardHeader>
+              <IonCardTitle>Continue to URL 2 SQL</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <p className="auth-card__copy">Use Google to access saved history, premium plan controls, and model downloads.</p>
+              <IonButton expand="block" onClick={handleGoogleSignIn}>
+                <IonIcon slot="start" icon={logoGoogle} />
+                Sign in with Google
+              </IonButton>
+              <IonButton expand="block" fill="clear" onClick={() => history.push("/editor")}>
+                <IonIcon slot="start" icon={arrowBackOutline} />
+                Back to Editor
+              </IonButton>
+              {error && <IonText color="danger"><p>{error}</p></IonText>}
+            </IonCardContent>
+          </IonCard>
+        </div>
       </IonContent>
     </IonPage>
   );

@@ -14,7 +14,6 @@ import {
   IonLabel,
   IonPage,
   IonText,
-  IonTitle,
   IonToolbar,
   IonToggle,
   IonSelect,
@@ -25,10 +24,10 @@ import { customAlphabet } from "nanoid";
 import { User } from "@supabase/supabase-js";
 import {
   arrowForwardOutline,
+  chevronDownOutline,
   checkmarkCircleOutline,
   diamondOutline,
   logOutOutline,
-  menuOutline,
   openOutline,
   personCircleOutline,
   prismOutline,
@@ -89,6 +88,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
   const accountEmail = user?.email ?? "Guest";
   const planLabel = profile?.plan === "premium" ? "Premium" : "Free";
+  const accountTriggerLabel = user ? (user.email ?? "Account") : "Account";
   const accountInitials = useMemo(() => {
     const source = user?.email?.trim() || "URL 2 SQL";
     const segments = source.split(/[@.\s_-]+/).filter(Boolean);
@@ -273,37 +273,39 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
   return (
     <IonPage>
-      <IonHeader>
+      <IonHeader className="editor-header">
         <IonToolbar className="editor-toolbar">
           <div className="editor-toolbar__brand">
             <div className="editor-toolbar__mark">U2S</div>
-            <div>
-              <IonTitle>URL 2 SQL</IonTitle>
+            <div className="editor-toolbar__brand-copy">
+              <div className="editor-toolbar__title">URL 2 SQL</div>
               <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
             </div>
           </div>
           <div className="editor-toolbar__actions">
             <div className="editor-toolbar__chip-list">
-              <span className="toolbar-chip">Desktop Studio</span>
-              <span className="toolbar-chip toolbar-chip--muted">Ad-ready layout</span>
+              <span className="toolbar-chip">QR Tag Studio</span>
             </div>
             {user && profile?.plan === "premium" && (
               <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
             )}
-            <IonButton
-              fill="solid"
-              color="light"
-              className="toolbar-menu-button"
+            <button
+              type="button"
+              className="account-trigger"
               onClick={() => setAccountPanelOpen(true)}
-              aria-label="Open account menu"
+              aria-label="Open account panel"
             >
-              <IonIcon slot="start" icon={menuOutline} />
-              Menu
-            </IonButton>
+              <span className="account-trigger__avatar">{accountInitials}</span>
+              <span className="account-trigger__copy">
+                <strong>{accountTriggerLabel}</strong>
+                <span>{planLabel} plan</span>
+              </span>
+              <IonIcon icon={chevronDownOutline} />
+            </button>
           </div>
         </IonToolbar>
       </IonHeader>
-      <IonContent className="editor-shell" fullscreen>
+      <IonContent className="editor-shell">
         <div className={`account-drawer-backdrop ${accountPanelOpen ? "is-open" : ""}`} onClick={() => setAccountPanelOpen(false)} />
         <aside className={`account-drawer ${accountPanelOpen ? "is-open" : ""}`} aria-hidden={!accountPanelOpen}>
           <div className="account-drawer__header">
@@ -365,16 +367,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           <section className="editor-hero">
             <div className="editor-hero__content">
               <p className="hero-kicker">URL 2 SQL Studio</p>
-              <h1>Create sleek QR tags that hold up on screen, print, and in 3D.</h1>
+              <div className="hero-heading-group">
+                <h1>Create polished QR tags for print, product packaging, and 3D output.</h1>
+                <p className="hero-subtitle">One workspace for short links, branded QR layouts, and export-ready geometry.</p>
+              </div>
               <p className="hero-copy">
-                Turn a destination URL into a branded QR asset, preview the finished tag, and export a manufacturing-ready STL or OBJ from one desktop workspace.
+                Turn a destination URL into a finished QR asset, review the composed tag before export, and generate a clean STL or OBJ without breaking the workflow.
               </p>
               <div className="hero-metrics">
                 <div className="hero-metric">
                   <IonIcon icon={sparklesOutline} />
                   <div>
                     <strong>Premium presentation</strong>
-                    <span>Clear hierarchy for operators, clients, and sponsors.</span>
+                    <span>Clear hierarchy for operators, clients, and internal teams.</span>
                   </div>
                 </div>
                 <div className="hero-metric">
@@ -387,8 +392,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 <div className="hero-metric">
                   <IonIcon icon={diamondOutline} />
                   <div>
-                    <strong>Ad inventory ready</strong>
-                    <span>Reserved sponsor placements for future monetization.</span>
+                    <strong>Production-ready exports</strong>
+                    <span>Dial in geometry settings before you commit to print or fabrication.</span>
                   </div>
                 </div>
               </div>
@@ -406,9 +411,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               </div>
 
               <div className="sponsor-slot sponsor-slot--hero">
-                <p className="sponsor-slot__label">Sponsor inventory</p>
-                <strong>Future premium placement</strong>
-                <span>Reserve this rail for partner ads, affiliate offers, or in-house promotions.</span>
+                <p className="sponsor-slot__label">Studio spotlight</p>
+                <strong>Featured space</strong>
+                <span>Use this rail for launches, seasonal collections, partner highlights, or product updates.</span>
               </div>
             </div>
           </section>
@@ -600,9 +605,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
               <div className="inline-promo-strip">
                 <div>
-                  <p className="inline-promo-strip__label">Growth slot</p>
-                  <strong>Reserved for future in-app promotion</strong>
-                  <span>Use this horizontal module for sponsor copy, premium upsells, or launch announcements.</span>
+                  <p className="inline-promo-strip__label">Studio update</p>
+                  <strong>Space for announcements and featured campaigns</strong>
+                  <span>Keep this module available for launches, premium messaging, or curated partner content.</span>
                 </div>
                 <IonButton fill="outline" onClick={user ? handleUpgrade : () => history.push("/auth")}>
                   {user ? "See premium options" : "Sign in for sync"}
@@ -698,9 +703,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               </IonCard>
 
               <div className="sponsor-slot sponsor-slot--rail">
-                <p className="sponsor-slot__label">Right-rail ad slot</p>
-                <strong>Future sponsor card</strong>
-                <span>Desktop-only promotional inventory sized for network ads, affiliates, or partner promos.</span>
+                <p className="sponsor-slot__label">Featured panel</p>
+                <strong>Flexible content block</strong>
+                <span>Keep this area free for announcements, seasonal promotions, or partner-led storytelling.</span>
               </div>
 
               <IonCard className="editor-card editor-card--rail">

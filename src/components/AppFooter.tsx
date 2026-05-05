@@ -7,11 +7,17 @@ const YEAR = new Date().getFullYear();
 const AppFooter: React.FC = () => (
   <footer className="app-footer">
     <IonText color="medium">
-      <span>© {YEAR} URL QR STL. All rights reserved.</span>
-      <span className="footer-sep">·</span>
-      <a href="/url-qr-stl/terms">Terms &amp; Conditions</a>
-      <span className="footer-sep">·</span>
-      <span className="footer-version">v{APP_VERSION} build {BUILD_NUMBER}</span>
+      <div className="app-footer__inner">
+        <div>
+          <p className="app-footer__brand">URL 2 SQL</p>
+          <p className="app-footer__copy">Premium QR tags, short links, and 3D-ready exports for physical products.</p>
+        </div>
+        <div className="app-footer__meta">
+          <a href="/url-qr-stl/terms">Terms &amp; Conditions</a>
+          <span className="footer-version">v{APP_VERSION} build {BUILD_NUMBER}</span>
+          <span>© {YEAR} All rights reserved.</span>
+        </div>
+      </div>
     </IonText>
   </footer>
 );

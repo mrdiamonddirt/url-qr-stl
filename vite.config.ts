@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/url-qr-stl/' : '/',
   plugins: [
     react(),
     legacy()
@@ -15,4 +16,4 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',
   }
-})
+}))

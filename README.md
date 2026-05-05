@@ -79,3 +79,26 @@ Not included yet:
 - Production-safe public redirect service
 - Advanced mesh repair/smoothing options
 - Full analytics dashboard
+
+## Deploy to GitHub Pages
+
+Repository target:
+
+- Owner: `mrdiamonddirt`
+- Repo: `url-qr-stl`
+- Site URL: `https://mrdiamonddirt.github.io/url-qr-stl/`
+
+This repo includes a workflow at `.github/workflows/deploy-pages.yml` that deploys on every push to `main`.
+
+One-time GitHub setup:
+
+1. Open your GitHub repo settings.
+2. Go to **Pages**.
+3. Set **Source** to **GitHub Actions**.
+
+Optional secrets (if you want live Supabase config on Pages):
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+If those secrets are not set, the app still deploys and runs in placeholder/local mode.

@@ -394,7 +394,7 @@
   flex-direction: column;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 42px 24px 36px;
+  padding: 16px 24px 36px;
 }
 
 .editor-hero {
@@ -1024,6 +1024,11 @@
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid rgba(20, 45, 70, 0.08);
+}
+
+.section-heading-row--compact {
+  margin-bottom: 8px;
+  align-items: center;
 }
 
 .section-heading-row--compact h3 {

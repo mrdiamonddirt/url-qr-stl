@@ -25,7 +25,6 @@ import { User } from "@supabase/supabase-js";
 import {
   arrowForwardOutline,
   chevronDownOutline,
-  checkmarkCircleOutline,
   diamondOutline,
   logOutOutline,
   openOutline,
@@ -129,6 +128,32 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
   }, [selectedTemplate]);
+
+  // Auto-compose preview when a template is selected (if QR is already generated)
+  useEffect(() => {
+    if (!qrDataUrl || !generated) return;
+    setActiveRailStage("compose");
+    setComposedPreviewUrl("");
+    setModelPreviewReady(false);
+    const defaults = selectedTemplate.fields.reduce<Record<string, string>>((acc, item) => {
+      acc[item.key] = item.defaultValue;
+      return acc;
+    }, {});
+    (async () => {
+      try {
+        const image = await composeTemplatePreview({
+          template: selectedTemplate,
+          values: defaults,
+          qrDataUrl,
+          shortUrl: generated.shortUrl,
+        });
+        setComposedPreviewUrl(image);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not compose template preview.");
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplateId]);
 
   useEffect(() => {
     setRecentByUser(listShortUrlsByUser(user?.id));
@@ -645,15 +670,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
             <aside className="workspace-rail">
               <IonCard className="editor-card editor-card--rail editor-card--preview-focus">
-                <IonCardHeader>
-                  <IonCardTitle>3. Preview and Export</IonCardTitle>
-                </IonCardHeader>
                 <IonCardContent>
-                  <div className="section-heading-row section-heading-row--rail">
-                    <div>
-                      <p className="section-kicker">Preview rail</p>
-                      <h3>Review every stage before final export.</h3>
-                    </div>
+                  <div className="section-heading-row section-heading-row--rail section-heading-row--compact">
+                    <span className="section-kicker">Preview</span>
                     <span className="section-state section-state--soft">Live</span>
                   </div>
 
@@ -669,7 +688,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             role="tab"
                             aria-selected={isActive}
                             className={`timeline-tab ${isActive ? "is-active" : ""}`}
-                            onClick={() => setActiveRailStage(stage.key)}
+                            onClick={() => {
+                              setActiveRailStage(stage.key);
+                              if (stage.key === "render" && composedPreviewUrl && generated) {
+                                handleGenerateModelPreview();
+                              }
+                            }}
                           >
                             <span className="timeline-tab__index">{index + 1}</span>
                             <span className="timeline-tab__copy">
@@ -740,15 +764,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           {composedPreviewUrl ? (
                             <img src={composedPreviewUrl} alt="Template and QR preview" />
                           ) : (
-                            <span>Compose to preview the selected tag layout before the 3D step.</span>
+                            <span>Selecting a template auto-composes the preview once a QR is generated.</span>
                           )}
                         </div>
-                        <div className="stage-action-row">
-                          <IonButton expand="block" fill="outline" disabled={!qrDataUrl} onClick={handleComposePreview}>
-                            <IonIcon slot="start" icon={checkmarkCircleOutline} />
-                            Preview Selected Tag
-                          </IonButton>
-                        </div>
+
                       </>
                     )}
 
@@ -761,17 +780,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           ) : (
                             <span>Generate model preview to render your 3D tag.</span>
                           )}
-                        </div>
-                        <div className="stage-action-row">
-                          <IonButton
-                            expand="block"
-                            fill="outline"
-                            disabled={!generated || !composedPreviewUrl}
-                            onClick={handleGenerateModelPreview}
-                          >
-                            <IonIcon slot="start" icon={prismOutline} />
-                            Generate 3D Model Preview
-                          </IonButton>
                         </div>
                         {modelPreviewReady && (
                           <IonText color="medium">

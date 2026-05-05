@@ -18,7 +18,6 @@ import {
   IonToggle,
   IonSelect,
   IonSelectOption,
-  IonRange,
 } from "@ionic/react";
 import { useHistory } from "react-router";
 import { customAlphabet } from "nanoid";
@@ -66,6 +65,14 @@ type RailStage = "import" | "compose" | "render" | "export";
 
 const FREE_SCAN_LIMIT = 20;
 
+const CTA_FONT_OPTIONS: Record<string, string> = {
+  default: "Clean Sans",
+  impact: "Impact",
+  mono: "Monospace",
+  serif: "Serif",
+  condensed: "Condensed",
+};
+
 function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Record<string, string> {
   const defaults = template.fields.reduce<Record<string, string>>((acc, item) => {
     acc[item.key] = item.defaultValue;
@@ -75,6 +82,8 @@ function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Rec
   if (template.ctaConfig) {
     defaults[template.ctaConfig.fieldKey] = defaults[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
     defaults[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx);
+    defaults[template.ctaConfig.fontKey] = "default";
+    defaults[template.ctaConfig.chipHeightKey] = String(template.ctaConfig.chipHeight);
   }
 
   return defaults;
@@ -965,45 +974,69 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         ))}
 
                         {selectedTemplate.ctaConfig ? (
-                          <IonItem className="editor-item" lines="none">
-                            <IonLabel position="stacked">
-                              Text size ({Math.round(
-                                Math.min(
+                          <>
+                            <IonItem className="editor-item">
+                              <IonLabel position="stacked">Font</IonLabel>
+                              <IonSelect
+                                value={templateValues[selectedTemplate.ctaConfig.fontKey] ?? "default"}
+                                onIonChange={(e) =>
+                                  setTemplateValues((prev) => ({
+                                    ...prev,
+                                    [selectedTemplate.ctaConfig!.fontKey]: String(e.detail.value),
+                                  }))
+                                }
+                              >
+                                {Object.entries(CTA_FONT_OPTIONS).map(([key, label]) => (
+                                  <IonSelectOption key={key} value={key}>{label}</IonSelectOption>
+                                ))}
+                              </IonSelect>
+                            </IonItem>
+                            <IonItem className="editor-item">
+                              <IonLabel position="stacked">Text size (px)</IonLabel>
+                              <IonInput
+                                type="number"
+                                min={selectedTemplate.ctaConfig.minSizePx}
+                                max={selectedTemplate.ctaConfig.maxSizePx}
+                                value={Math.min(
                                   selectedTemplate.ctaConfig.maxSizePx,
                                   Math.max(
                                     selectedTemplate.ctaConfig.minSizePx,
                                     Number(templateValues[selectedTemplate.ctaConfig.sizeKey]) || selectedTemplate.ctaConfig.defaultSizePx
                                   )
-                                )
-                              )} px)
-                            </IonLabel>
-                            <IonRange
-                              min={selectedTemplate.ctaConfig.minSizePx}
-                              max={selectedTemplate.ctaConfig.maxSizePx}
-                              step={1}
-                              snaps
-                              pin
-                              value={Math.min(
-                                selectedTemplate.ctaConfig.maxSizePx,
-                                Math.max(
-                                  selectedTemplate.ctaConfig.minSizePx,
-                                  Number(templateValues[selectedTemplate.ctaConfig.sizeKey]) || selectedTemplate.ctaConfig.defaultSizePx
-                                )
-                              )}
-                              onIonChange={(e) => {
-                                const raw = Number(e.detail.value);
-                                if (!Number.isFinite(raw)) return;
-                                const clamped = Math.min(
-                                  selectedTemplate.ctaConfig!.maxSizePx,
-                                  Math.max(selectedTemplate.ctaConfig!.minSizePx, Math.round(raw))
-                                );
-                                setTemplateValues((prev) => ({
-                                  ...prev,
-                                  [selectedTemplate.ctaConfig!.sizeKey]: String(clamped),
-                                }));
-                              }}
-                            />
-                          </IonItem>
+                                )}
+                                onIonInput={(e) => {
+                                  const raw = Number(e.detail.value);
+                                  if (!Number.isFinite(raw)) return;
+                                  const clamped = Math.min(
+                                    selectedTemplate.ctaConfig!.maxSizePx,
+                                    Math.max(selectedTemplate.ctaConfig!.minSizePx, Math.round(raw))
+                                  );
+                                  setTemplateValues((prev) => ({
+                                    ...prev,
+                                    [selectedTemplate.ctaConfig!.sizeKey]: String(clamped),
+                                  }));
+                                }}
+                              />
+                            </IonItem>
+                            <IonItem className="editor-item" lines="none">
+                              <IonLabel position="stacked">Bar height (px)</IonLabel>
+                              <IonInput
+                                type="number"
+                                min={24}
+                                max={120}
+                                value={Number(templateValues[selectedTemplate.ctaConfig.chipHeightKey]) || selectedTemplate.ctaConfig.chipHeight}
+                                onIonInput={(e) => {
+                                  const raw = Number(e.detail.value);
+                                  if (!Number.isFinite(raw) || raw <= 0) return;
+                                  const clamped = Math.min(120, Math.max(24, Math.round(raw)));
+                                  setTemplateValues((prev) => ({
+                                    ...prev,
+                                    [selectedTemplate.ctaConfig!.chipHeightKey]: String(clamped),
+                                  }));
+                                }}
+                              />
+                            </IonItem>
+                          </>
                         ) : null}
                       </div>
                     ) : (

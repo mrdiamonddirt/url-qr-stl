@@ -15,6 +15,8 @@ type ResolvedCtaLayout = {
   chipRadius: number;
   bottomInset: number;
   textSize: number;
+  blockStyle: boolean;
+  fontStack: string;
 };
 
 type CompositionLayout = {
@@ -32,7 +34,14 @@ type CompositionLayout = {
 
 const BASE_CANVAS_SIZE = 480;
 const SELECTOR_PREVIEW_SIZE = 232;
-const CTA_FONT_STACK = "'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
+export const CTA_FONT_STACKS: Record<string, string> = {
+  default: "'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+  impact: "Impact, 'Arial Black', sans-serif",
+  mono: "'Courier New', 'Lucida Console', monospace",
+  serif: "Georgia, 'Times New Roman', serif",
+  condensed: "'Trebuchet MS', 'Segoe UI', sans-serif",
+};
+const CTA_FONT_STACK = CTA_FONT_STACKS.default;
 
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -262,7 +271,8 @@ function resolveCtaLayout(
   ctx: CanvasRenderingContext2D,
   template: QrTemplate,
   values: Record<string, string>,
-  scale = 1
+  scale = 1,
+  frameInnerWidth?: number
 ): ResolvedCtaLayout | null {
   const config = template.ctaConfig;
   if (!config) {
@@ -276,22 +286,28 @@ function resolveCtaLayout(
     }
 
     const textSize = 21 * scale;
-    ctx.font = `800 ${textSize}px ${CTA_FONT_STACK}`;
+    const fontStack = CTA_FONT_STACKS.default;
+    ctx.font = `800 ${textSize}px ${fontStack}`;
     const lines = wrapTextLines(ctx, label, 220 * scale, 2);
     const lineHeight = Math.max(11 * scale, textSize * 1.04);
     const chipHeight = Math.max(42 * scale, lines.length * lineHeight + 10 * scale);
-    const maxLineWidth = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
-    const chipPaddingX = 16 * scale;
-    const chipWidth = clampNumber(maxLineWidth + chipPaddingX * 2, 126 * scale, 252 * scale);
+    const chipWidth = frameInnerWidth ?? clampNumber(
+      lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0) + 32 * scale,
+      126 * scale,
+      252 * scale
+    );
+    const topRadius = Math.max(10 * scale, Math.floor(chipHeight * 0.28));
 
     return {
       lines,
       lineHeight,
       chipHeight,
       chipWidth,
-      chipRadius: Math.max(17 * scale, Math.floor(chipHeight / 2) - 1),
-      bottomInset: 30 * scale,
+      chipRadius: topRadius,
+      bottomInset: frameInnerWidth !== undefined ? 0 : 30 * scale,
       textSize,
+      blockStyle: frameInnerWidth !== undefined,
+      fontStack,
     };
   }
 
@@ -309,27 +325,34 @@ function resolveCtaLayout(
     config.maxSizePx
   ) * scale;
 
+  const fontKey = values[config.fontKey] ?? "default";
+  const fontStack = CTA_FONT_STACKS[fontKey] ?? CTA_FONT_STACK;
+
   ctx.fillStyle = "#ffffff";
-  ctx.font = `800 ${size}px ${CTA_FONT_STACK}`;
-  const lines = wrapTextLines(ctx, label, config.maxWidth * scale, config.maxLines);
+  ctx.font = `800 ${size}px ${fontStack}`;
+  const lines = wrapTextLines(ctx, label, (frameInnerWidth ?? config.maxWidth * scale), config.maxLines);
   const lineHeight = Math.max(14 * scale, Math.round(size * 1.05));
   const contentHeight = Math.max(lineHeight, lines.length * lineHeight);
-  const chipHeight = Math.max(config.chipHeight * scale, contentHeight + 10 * scale);
-  const maxLineWidth = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
-  const chipWidth = clampNumber(
-    maxLineWidth + config.chipPaddingX * scale * 2,
+  const rawChipHeight = Number(values[config.chipHeightKey]);
+  const userChipHeight = Number.isFinite(rawChipHeight) && rawChipHeight > 0 ? rawChipHeight : config.chipHeight;
+  const chipHeight = Math.max(userChipHeight * scale, contentHeight + 10 * scale);
+  const chipWidth = frameInnerWidth ?? clampNumber(
+    lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0) + config.chipPaddingX * scale * 2,
     126 * scale,
     (config.maxWidth + config.chipPaddingX * 2) * scale
   );
+  const topRadius = Math.max(config.chipRadius * scale, Math.floor(chipHeight * 0.28));
 
   return {
     lines,
     lineHeight,
     chipHeight,
     chipWidth,
-    chipRadius: Math.max(config.chipRadius * scale, Math.floor(chipHeight / 2) - 1),
-    bottomInset: config.chipBottomInset * scale,
+    chipRadius: topRadius,
+    bottomInset: frameInnerWidth !== undefined ? 0 : config.chipBottomInset * scale,
     textSize: size,
+    blockStyle: frameInnerWidth !== undefined,
+    fontStack,
   };
 }
 
@@ -343,11 +366,15 @@ function drawEditableCtaLabel(
   const chipX = (canvasSize - layout.chipWidth) / 2;
 
   ctx.fillStyle = "#101418";
-  drawRoundedRect(ctx, chipX, chipY, layout.chipWidth, layout.chipHeight, layout.chipRadius);
-  ctx.fill();
+  if (layout.blockStyle) {
+    ctx.fillRect(chipX, chipY, layout.chipWidth, layout.chipHeight);
+  } else {
+    drawRoundedRect(ctx, chipX, chipY, layout.chipWidth, layout.chipHeight, layout.chipRadius);
+    ctx.fill();
+  }
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = `800 ${layout.textSize}px ${CTA_FONT_STACK}`;
+  ctx.font = `800 ${layout.textSize}px ${layout.fontStack}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const textTop = chipY + layout.chipHeight / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
@@ -367,12 +394,24 @@ function buildDefaultTemplateValues(template: QrTemplate): Record<string, string
   if (template.ctaConfig) {
     values[template.ctaConfig.fieldKey] = values[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
     values[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx);
+    values[template.ctaConfig.fontKey] = "default";
+    values[template.ctaConfig.chipHeightKey] = String(template.ctaConfig.chipHeight);
   }
 
   return values;
 }
 
-function resolveQrInset(template: QrTemplate, frameSize: number, scale: number): number {
+function resolveQrInset(
+  template: QrTemplate,
+  frameSize: number,
+  scale: number,
+  blockCta: boolean
+): number {
+  if (blockCta) {
+    // Block-style CTA: QR fills edge-to-edge with only a tiny breathing margin
+    return clampNumber(frameSize * 0.018, 6 * scale, 10 * scale);
+  }
+
   if (template.borderStyle === "fancy") {
     return clampNumber(frameSize * 0.082, 24 * scale, 36 * scale);
   }
@@ -402,9 +441,11 @@ function resolveCompositionLayout(
   const frameY = frameTop;
   const frameStrokeWidth = getFrameStrokeWidth(template, scale);
   const frameContentInset = frameStrokeWidth > 0 ? frameStrokeWidth / 2 + 1 * scale : 0;
-  const qrInset = resolveQrInset(template, frameSize, scale);
-  const ctaLayout = resolveCtaLayout(ctx, template, values, scale);
-  const ctaGap = Math.max(6 * scale, frameSize * 0.02);
+  const frameInnerWidth = Math.max(0, frameSize - 2 * frameContentInset);
+  const ctaLayout = resolveCtaLayout(ctx, template, values, scale, template.ctaConfig ? frameInnerWidth : undefined);
+  const blockCta = ctaLayout?.blockStyle ?? false;
+  const qrInset = resolveQrInset(template, frameSize, scale, blockCta);
+  const ctaGap = blockCta ? 0 : Math.max(6 * scale, frameSize * 0.02);
   const contentBottom = frameY + frameSize - frameContentInset;
   const chipY = ctaLayout ? contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight : null;
   const qrY = frameY + frameContentInset + qrInset;

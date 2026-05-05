@@ -18,6 +18,8 @@ export type TemplateLoopConfig = {
 export type TemplateCtaConfig = {
   fieldKey: string;
   sizeKey: string;
+  fontKey: string;
+  chipHeightKey: string;
   minSizePx: number;
   maxSizePx: number;
   defaultSizePx: number;

@@ -39,6 +39,8 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     ctaConfig: {
       fieldKey: "cta_text",
       sizeKey: "cta_size",
+      fontKey: "cta_font",
+      chipHeightKey: "cta_chip_height",
       minSizePx: 14,
       maxSizePx: 42,
       defaultSizePx: 21,
@@ -69,6 +71,8 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     ctaConfig: {
       fieldKey: "cta_text",
       sizeKey: "cta_size",
+      fontKey: "cta_font",
+      chipHeightKey: "cta_chip_height",
       minSizePx: 14,
       maxSizePx: 42,
       defaultSizePx: 21,
@@ -106,6 +110,8 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     ctaConfig: {
       fieldKey: "cta_text",
       sizeKey: "cta_size",
+      fontKey: "cta_font",
+      chipHeightKey: "cta_chip_height",
       minSizePx: 14,
       maxSizePx: 42,
       defaultSizePx: 21,
@@ -143,6 +149,8 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     ctaConfig: {
       fieldKey: "cta_text",
       sizeKey: "cta_size",
+      fontKey: "cta_font",
+      chipHeightKey: "cta_chip_height",
       minSizePx: 14,
       maxSizePx: 42,
       defaultSizePx: 21,
@@ -163,3 +171,4 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     ],
   },
 ];
+

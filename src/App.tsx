@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Redirect, Route } from 'react-router-dom';
 import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
-import { IonReactRouter } from '@ionic/react-router';
+import { IonReactHashRouter } from '@ionic/react-router';
 import { User } from '@supabase/supabase-js';
 import EditorPage from './pages/EditorPage';
 import AuthPage from './pages/AuthPage';
@@ -88,7 +88,7 @@ const App: React.FC = () => {
 
   return (
     <IonApp>
-      <IonReactRouter basename={ROUTER_BASENAME}>
+      <IonReactHashRouter basename={ROUTER_BASENAME}>
         <IonRouterOutlet>
           <Route exact path="/editor">
             <EditorPage user={user} profile={profile} />

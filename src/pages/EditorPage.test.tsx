@@ -20,12 +20,14 @@ describe("EditorPage template picker", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    expect(screen.getAllByRole("button", { name: /Select template /i })).toHaveLength(5);
+    expect(screen.getAllByRole("button", { name: /Select template /i })).toHaveLength(7);
     expect(screen.getByRole("button", { name: "Select template No Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Simple Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Fancy Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Scan Me" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Open Link" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Scan Me Loop" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Scan Me Big Loop" })).toBeInTheDocument();
 
     expect(screen.getByText(/No text fields for this template/i)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Type text for this template")).not.toBeInTheDocument();

@@ -81,24 +81,56 @@ function strokeFrame(
   ctx.stroke();
 }
 
-function drawCtaLabel(ctx: CanvasRenderingContext2D, label: string, canvasSize: number) {
-  const chipWidth = Math.min(210, Math.max(126, label.length * 13));
-  const chipHeight = 42;
-  const chipX = (canvasSize - chipWidth) / 2;
-  const chipY = canvasSize - 72;
+function drawTopLoop(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  frameX: number,
+  frameY: number,
+  frameSize: number
+) {
+  const loop = template.loopConfig;
+  if (!loop) {
+    return;
+  }
 
-  ctx.fillStyle = "#101418";
-  drawRoundedRect(ctx, chipX, chipY, chipWidth, chipHeight, 17);
+  const centerX = frameX + frameSize / 2;
+  const stemTop = frameY - loop.stemHeight;
+  const loopCenterY = stemTop - loop.lift;
+
+  ctx.fillStyle = template.accentColor;
+  drawRoundedRect(
+    ctx,
+    centerX - loop.stemWidth / 2,
+    stemTop,
+    loop.stemWidth,
+    loop.stemHeight,
+    Math.min(loop.stemWidth / 3, 14)
+  );
   ctx.fill();
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "800 21px 'Segoe UI', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, chipX + chipWidth / 2, chipY + chipHeight / 2 + 1);
-  ctx.textAlign = "start";
-  ctx.textBaseline = "alphabetic";
+  ctx.beginPath();
+  ctx.arc(centerX, loopCenterY, loop.outerRadius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(centerX, loopCenterY, loop.innerRadius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
+
+type ResolvedCtaLayout = {
+  lines: string[];
+  lineHeight: number;
+  chipHeight: number;
+  chipWidth: number;
+  chipRadius: number;
+  bottomInset: number;
+  textSize: number;
+};
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -167,21 +199,79 @@ function drawEditableCtaLabel(
   ctx: CanvasRenderingContext2D,
   template: QrTemplate,
   values: Record<string, string>,
-  canvasSize: number
+  canvasSize: number,
+  chipYOverride?: number
 ) {
+  const layout = resolveCtaLayout(ctx, template, values);
+  if (!layout) {
+    return null;
+  }
+
+  const chipY = chipYOverride ?? canvasSize - layout.bottomInset - layout.chipHeight;
+  const chipX = (canvasSize - layout.chipWidth) / 2;
+
+  ctx.fillStyle = "#101418";
+  drawRoundedRect(ctx, chipX, chipY, layout.chipWidth, layout.chipHeight, layout.chipRadius);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `800 ${layout.textSize}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const textTop = chipY + layout.chipHeight / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
+  layout.lines.forEach((line, index) => {
+    ctx.fillText(line, chipX + layout.chipWidth / 2, textTop + index * layout.lineHeight);
+  });
+  ctx.textAlign = "start";
+  ctx.textBaseline = "alphabetic";
+
+  return {
+    chipY,
+    chipHeight: layout.chipHeight,
+  };
+}
+
+function resolveCtaLayout(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  values: Record<string, string>
+): ResolvedCtaLayout | null {
   const config = template.ctaConfig;
   if (!config) {
-    if (template.ctaLabel) {
-      drawCtaLabel(ctx, template.ctaLabel, canvasSize);
+    if (!template.ctaLabel) {
+      return null;
     }
-    return;
+
+    const label = template.ctaLabel.replace(/\s+/g, " ").trim();
+    if (!label) {
+      return null;
+    }
+
+    const textSize = 21;
+    ctx.font = `800 ${textSize}px 'Segoe UI', sans-serif`;
+    const lines = wrapTextLines(ctx, label, 220, 2);
+    const lineHeight = 22;
+    const chipHeight = Math.max(42, lines.length * lineHeight + 10);
+    const maxLineWidth = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+    const chipPaddingX = 16;
+    const chipWidth = clampNumber(maxLineWidth + chipPaddingX * 2, 126, 220 + chipPaddingX * 2);
+
+    return {
+      lines,
+      lineHeight,
+      chipHeight,
+      chipWidth,
+      chipRadius: Math.max(17, Math.floor(chipHeight / 2) - 1),
+      bottomInset: 30,
+      textSize,
+    };
   }
 
   const fallbackText = template.ctaLabel ?? "";
   const rawLabel = values[config.fieldKey] ?? fallbackText;
   const label = rawLabel.replace(/\s+/g, " ").trim() || fallbackText;
   if (!label) {
-    return;
+    return null;
   }
 
   const rawSize = Number(values[config.sizeKey]);
@@ -198,23 +288,21 @@ function drawEditableCtaLabel(
   const contentHeight = Math.max(lineHeight, lines.length * lineHeight);
   const chipHeight = Math.max(config.chipHeight, contentHeight + 10);
   const maxLineWidth = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
-  const chipWidth = clampNumber(maxLineWidth + config.chipPaddingX * 2, 126, config.maxWidth + config.chipPaddingX * 2);
-  const chipX = (canvasSize - chipWidth) / 2;
-  const chipY = canvasSize - config.chipBottomInset - chipHeight;
+  const chipWidth = clampNumber(
+    maxLineWidth + config.chipPaddingX * 2,
+    126,
+    config.maxWidth + config.chipPaddingX * 2
+  );
 
-  ctx.fillStyle = "#101418";
-  drawRoundedRect(ctx, chipX, chipY, chipWidth, chipHeight, config.chipRadius);
-  ctx.fill();
-
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const textTop = chipY + chipHeight / 2 - ((lines.length - 1) * lineHeight) / 2;
-  lines.forEach((line, index) => {
-    ctx.fillText(line, chipX + chipWidth / 2, textTop + index * lineHeight);
-  });
-  ctx.textAlign = "start";
-  ctx.textBaseline = "alphabetic";
+  return {
+    lines,
+    lineHeight,
+    chipHeight,
+    chipWidth,
+    chipRadius: Math.max(config.chipRadius, Math.floor(chipHeight / 2) - 1),
+    bottomInset: config.chipBottomInset,
+    textSize: size,
+  };
 }
 
 export async function composeTemplatePreview({
@@ -235,27 +323,41 @@ export async function composeTemplatePreview({
 
   const qrImage = await loadImage(qrDataUrl);
   const frameInset = template.borderStyle === "none" ? 32 : 22;
-  const ctaReserve = template.ctaLabel || template.ctaConfig ? Math.max((template.ctaConfig?.chipHeight ?? 42) + 12, 54) : 0;
-  const frameSize = canvas.width - frameInset * 2;
+  const loopExtraTop = template.loopConfig
+    ? template.loopConfig.outerRadius + template.loopConfig.stemHeight + template.loopConfig.lift + 10
+    : 0;
+  const frameTop = frameInset + loopExtraTop;
+  const frameBottom = canvas.height - frameInset;
+  const frameSize = Math.min(canvas.width - frameInset * 2, frameBottom - frameTop);
+  const frameX = (canvas.width - frameSize) / 2;
+  const frameY = frameTop;
   const qrInset = template.borderStyle === "fancy" ? 38 : template.borderStyle === "simple" ? 28 : 20;
-  const qrSize = frameSize - qrInset * 2;
-  const frameX = frameInset;
-  const frameY = frameInset;
-  const qrX = frameX + qrInset;
-  const qrY = frameY + qrInset - Math.floor(ctaReserve / 3);
+  const ctaLayout = resolveCtaLayout(ctx, template, values);
+  const ctaGap = 12;
+  const chipY = ctaLayout ? canvas.height - ctaLayout.bottomInset - ctaLayout.chipHeight : null;
+  const qrY = frameY + qrInset;
+  const maxQrSizeFromFrame = frameSize - qrInset * 2;
+  const maxQrSizeFromCta = chipY === null ? maxQrSizeFromFrame : chipY - ctaGap - qrY;
+  const qrSize = Math.max(0, Math.min(maxQrSizeFromFrame, maxQrSizeFromCta));
+  const qrX = frameX + (frameSize - qrSize) / 2;
 
-  ctx.fillStyle = "#eef2f7";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(frameX, frameY, frameSize, frameSize);
   strokeFrame(ctx, template, frameX, frameY, frameSize, frameSize);
+  drawTopLoop(ctx, template, frameX, frameY, frameSize);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(qrX, qrY, qrSize, qrSize);
-  ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  if (qrSize > 0) {
+    ctx.fillRect(qrX, qrY, qrSize, qrSize);
+    ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+  }
 
-  drawEditableCtaLabel(ctx, template, values, canvas.width);
+  if (chipY !== null) {
+    drawEditableCtaLabel(ctx, template, values, canvas.width, chipY);
+  }
 
   return canvas.toDataURL("image/png");
 }

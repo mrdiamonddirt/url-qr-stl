@@ -8,6 +8,12 @@ const DETAIL_SCALE: Record<StlParams["detail"], number> = {
   high: 2,
 };
 
+const TEMPLATE_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
+  low: 144,
+  medium: 180,
+  high: 216,
+};
+
 type GridMask = {
   width: number;
   height: number;
@@ -17,6 +23,12 @@ type GridMask = {
 type ModelDimensions = {
   widthMm: number;
   heightMm: number;
+};
+
+type Rgb = {
+  red: number;
+  green: number;
+  blue: number;
 };
 
 function cropMask(mask: GridMask, padding = 1): GridMask {
@@ -115,6 +127,98 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function getCornerAverageColor(pixels: Uint8ClampedArray, width: number, height: number): Rgb {
+  const corners = [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+  ] as const;
+
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  for (const [x, y] of corners) {
+    const idx = (y * width + x) * 4;
+    red += pixels[idx];
+    green += pixels[idx + 1];
+    blue += pixels[idx + 2];
+  }
+
+  return {
+    red: red / corners.length,
+    green: green / corners.length,
+    blue: blue / corners.length,
+  };
+}
+
+function colorDistance(a: Rgb, b: Rgb): number {
+  return Math.abs(a.red - b.red) + Math.abs(a.green - b.green) + Math.abs(a.blue - b.blue);
+}
+
+function removeTinyIslands(mask: GridMask, minArea: number): GridMask {
+  if (minArea <= 1) {
+    return mask;
+  }
+
+  const visited = new Array<boolean>(mask.width * mask.height).fill(false);
+  const kept = new Array<boolean>(mask.width * mask.height).fill(false);
+  const directions = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < mask.width; x += 1) {
+      const startIdx = y * mask.width + x;
+      if (!mask.data[startIdx] || visited[startIdx]) {
+        continue;
+      }
+
+      const queue: Array<[number, number]> = [[x, y]];
+      const component: number[] = [];
+      visited[startIdx] = true;
+
+      while (queue.length > 0) {
+        const [cx, cy] = queue.pop() as [number, number];
+        const idx = cy * mask.width + cx;
+        component.push(idx);
+
+        for (const [dx, dy] of directions) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height) {
+            continue;
+          }
+
+          const nIdx = ny * mask.width + nx;
+          if (!mask.data[nIdx] || visited[nIdx]) {
+            continue;
+          }
+
+          visited[nIdx] = true;
+          queue.push([nx, ny]);
+        }
+      }
+
+      if (component.length >= minArea) {
+        for (const idx of component) {
+          kept[idx] = true;
+        }
+      }
+    }
+  }
+
+  return {
+    width: mask.width,
+    height: mask.height,
+    data: kept,
+  };
+}
+
 export function createQrModelGroup(value: string, params: StlParams): Group {
   const matrix = buildQrMatrix(value);
   return createModelGroupFromGrid(
@@ -129,7 +233,7 @@ export function createQrModelGroup(value: string, params: StlParams): Group {
 
 export async function createTemplateModelGroup(imageDataUrl: string, params: StlParams): Promise<Group> {
   const image = await loadImage(imageDataUrl);
-  const sampleWidth = 132;
+  const sampleWidth = TEMPLATE_SAMPLE_WIDTH[params.detail];
   const sampleHeight = Math.max(84, Math.round((sampleWidth * image.height) / image.width));
   const canvas = document.createElement("canvas");
   canvas.width = sampleWidth;
@@ -142,6 +246,7 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
 
   ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
   const pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+  const background = getCornerAverageColor(pixels, sampleWidth, sampleHeight);
   const data: boolean[] = new Array(sampleWidth * sampleHeight);
 
   for (let y = 0; y < sampleHeight; y += 1) {
@@ -151,18 +256,25 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
       const green = pixels[idx + 1];
       const blue = pixels[idx + 2];
       const alpha = pixels[idx + 3];
+      const pixel = { red, green, blue };
       const luma = red * 0.299 + green * 0.587 + blue * 0.114;
-      data[y * sampleWidth + x] = alpha > 20 && luma < 165;
+      const distanceFromBackground = colorDistance(pixel, background);
+      data[y * sampleWidth + x] = alpha > 18 && luma < 158 && distanceFromBackground > 32;
     }
   }
 
-  const croppedMask = cropMask(
+  const denoisedMask = removeTinyIslands(
     {
       width: sampleWidth,
       height: sampleHeight,
       data,
     },
-    2
+    6
+  );
+
+  const croppedMask = cropMask(
+    denoisedMask,
+    3
   );
 
   const widthRatio = croppedMask.width / sampleWidth;

@@ -7,6 +7,14 @@ export type TemplateField = {
 
 export type TemplateBorderStyle = "none" | "simple" | "fancy";
 
+export type TemplateLoopConfig = {
+  outerRadius: number;
+  innerRadius: number;
+  stemWidth: number;
+  stemHeight: number;
+  lift: number;
+};
+
 export type TemplateCtaConfig = {
   fieldKey: string;
   sizeKey: string;
@@ -28,6 +36,7 @@ export type QrTemplate = {
   frameStyle: "rounded" | "sharp" | "circle";
   accentColor: string;
   borderStyle: TemplateBorderStyle;
+  loopConfig?: TemplateLoopConfig;
   ctaLabel?: string;
   ctaConfig?: TemplateCtaConfig;
   fields: TemplateField[];

@@ -8,7 +8,7 @@ function renderEditor() {
   return render(
     <IonApp>
       <MemoryRouter>
-        <EditorPage user={null} />
+        <EditorPage user={null} profile={null} />
       </MemoryRouter>
     </IonApp>
   );

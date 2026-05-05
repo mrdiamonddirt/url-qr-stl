@@ -6,15 +6,13 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
-  IonCol,
   IonContent,
-  IonGrid,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
   IonPage,
-  IonRow,
   IonText,
   IonTitle,
   IonToolbar,
@@ -25,6 +23,17 @@ import {
 import { useHistory } from "react-router";
 import { customAlphabet } from "nanoid";
 import { User } from "@supabase/supabase-js";
+import {
+  arrowForwardOutline,
+  checkmarkCircleOutline,
+  diamondOutline,
+  logOutOutline,
+  menuOutline,
+  openOutline,
+  personCircleOutline,
+  prismOutline,
+  sparklesOutline,
+} from "ionicons/icons";
 import { TEMPLATE_PRESETS } from "../constants/templates";
 import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
 import { composeTemplatePreview } from "../lib/templatePreview";
@@ -58,6 +67,7 @@ const FREE_SCAN_LIMIT = 20;
 
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
+  const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(TEMPLATE_PRESETS[0].id);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
@@ -76,6 +86,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
   );
+
+  const accountEmail = user?.email ?? "Guest";
+  const planLabel = profile?.plan === "premium" ? "Premium" : "Free";
+  const accountInitials = useMemo(() => {
+    const source = user?.email?.trim() || "URL 2 SQL";
+    const segments = source.split(/[@.\s_-]+/).filter(Boolean);
+    return segments.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U2";
+  }, [user?.email]);
 
   useEffect(() => {
     const defaults = selectedTemplate.fields.reduce<Record<string, string>>((acc, item) => {
@@ -236,12 +254,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }
 
   async function handleSignOut() {
+    setAccountPanelOpen(false);
     await signOut();
     history.push("/editor");
   }
 
   async function handleUpgrade() {
     try {
+      setAccountPanelOpen(false);
       const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
       const origin = `${window.location.origin}${base}`;
       const url = await createCheckoutSession(origin);
@@ -254,26 +274,176 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar>
-          <IonTitle>URL QR STL</IonTitle>
-          {user && profile?.plan === "premium" && (
-            <IonBadge slot="end" color="warning" style={{ marginRight: 8 }}>Premium</IonBadge>
-          )}
-          <IonButton slot="end" fill="clear" onClick={user ? handleSignOut : () => history.push("/auth")}>
-            {user ? "Sign out" : "Sign in"}
-          </IonButton>
+        <IonToolbar className="editor-toolbar">
+          <div className="editor-toolbar__brand">
+            <div className="editor-toolbar__mark">U2S</div>
+            <div>
+              <IonTitle>URL 2 SQL</IonTitle>
+              <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
+            </div>
+          </div>
+          <div className="editor-toolbar__actions">
+            <div className="editor-toolbar__chip-list">
+              <span className="toolbar-chip">Desktop Studio</span>
+              <span className="toolbar-chip toolbar-chip--muted">Ad-ready layout</span>
+            </div>
+            {user && profile?.plan === "premium" && (
+              <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
+            )}
+            <IonButton
+              fill="solid"
+              color="light"
+              className="toolbar-menu-button"
+              onClick={() => setAccountPanelOpen(true)}
+              aria-label="Open account menu"
+            >
+              <IonIcon slot="start" icon={menuOutline} />
+              Menu
+            </IonButton>
+          </div>
         </IonToolbar>
       </IonHeader>
       <IonContent className="editor-shell" fullscreen>
-        <IonGrid>
-          <IonRow>
-            <IonCol size="12" sizeLg="8">
-              <IonCard>
+        <div className={`account-drawer-backdrop ${accountPanelOpen ? "is-open" : ""}`} onClick={() => setAccountPanelOpen(false)} />
+        <aside className={`account-drawer ${accountPanelOpen ? "is-open" : ""}`} aria-hidden={!accountPanelOpen}>
+          <div className="account-drawer__header">
+            <div className="account-drawer__avatar">{accountInitials}</div>
+            <div>
+              <p className="account-drawer__eyebrow">Account</p>
+              <h2>{accountEmail}</h2>
+              <p className="account-drawer__plan">{planLabel} plan</p>
+            </div>
+          </div>
+
+          <div className="account-drawer__section">
+            <div className="account-stat-card">
+              <span>Subscription</span>
+              <strong>{profile?.plan === "premium" ? "Unlimited scans and exports" : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
+            </div>
+            <div className="account-stat-card">
+              <span>Status</span>
+              <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
+            </div>
+          </div>
+
+          <div className="account-drawer__section account-drawer__links">
+            <button type="button" className="account-link" onClick={() => setAccountPanelOpen(false)}>
+              <IonIcon icon={personCircleOutline} />
+              <span>Workspace overview</span>
+            </button>
+            <button type="button" className="account-link" onClick={() => history.push("/terms")}>
+              <IonIcon icon={openOutline} />
+              <span>Terms and policies</span>
+            </button>
+          </div>
+
+          <div className="account-drawer__section">
+            {user ? (
+              <>
+                {profile?.plan !== "premium" && (
+                  <IonButton expand="block" onClick={handleUpgrade}>
+                    Upgrade to Premium
+                  </IonButton>
+                )}
+                <IonButton expand="block" fill="outline" onClick={handleSignOut}>
+                  <IonIcon slot="start" icon={logOutOutline} />
+                  Sign out
+                </IonButton>
+              </>
+            ) : (
+              <IonButton expand="block" onClick={() => history.push("/auth")}>
+                Sign in to your account
+              </IonButton>
+            )}
+            <IonButton expand="block" fill="clear" onClick={() => setAccountPanelOpen(false)}>
+              Close panel
+            </IonButton>
+          </div>
+        </aside>
+
+        <div className="editor-layout">
+          <section className="editor-hero">
+            <div className="editor-hero__content">
+              <p className="hero-kicker">URL 2 SQL Studio</p>
+              <h1>Create sleek QR tags that hold up on screen, print, and in 3D.</h1>
+              <p className="hero-copy">
+                Turn a destination URL into a branded QR asset, preview the finished tag, and export a manufacturing-ready STL or OBJ from one desktop workspace.
+              </p>
+              <div className="hero-metrics">
+                <div className="hero-metric">
+                  <IonIcon icon={sparklesOutline} />
+                  <div>
+                    <strong>Premium presentation</strong>
+                    <span>Clear hierarchy for operators, clients, and sponsors.</span>
+                  </div>
+                </div>
+                <div className="hero-metric">
+                  <IonIcon icon={prismOutline} />
+                  <div>
+                    <strong>3-step production flow</strong>
+                    <span>Generate, preview, and export without leaving the page.</span>
+                  </div>
+                </div>
+                <div className="hero-metric">
+                  <IonIcon icon={diamondOutline} />
+                  <div>
+                    <strong>Ad inventory ready</strong>
+                    <span>Reserved sponsor placements for future monetization.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="editor-hero__rail">
+              <div className="hero-spotlight-card">
+                <p className="hero-spotlight-card__label">Current workspace</p>
+                <strong>{generated?.code ? `Tag ${generated.code}` : "New tag draft"}</strong>
+                <span>{generated?.shortUrl ?? "No short link generated yet"}</span>
+                <div className="hero-spotlight-card__footer">
+                  <span>{selectedTemplate.name}</span>
+                  <span>{modelFormat.toUpperCase()} export</span>
+                </div>
+              </div>
+
+              <div className="sponsor-slot sponsor-slot--hero">
+                <p className="sponsor-slot__label">Sponsor inventory</p>
+                <strong>Future premium placement</strong>
+                <span>Reserve this rail for partner ads, affiliate offers, or in-house promotions.</span>
+              </div>
+            </div>
+          </section>
+
+          <div className="workspace-shell">
+            <main className="workspace-main">
+              <IonCard className="editor-card editor-card--intro">
+                <IonCardContent>
+                  <div className="workflow-banner">
+                    <div>
+                      <p className="workflow-banner__eyebrow">Production workflow</p>
+                      <h2>Build the tag in sequence, then export with confidence.</h2>
+                    </div>
+                    <div className="workflow-steps" aria-label="Workflow steps">
+                      <span>1. Input URL</span>
+                      <span>2. Compose preview</span>
+                      <span>3. Export 3D</span>
+                    </div>
+                  </div>
+                </IonCardContent>
+              </IonCard>
+
+              <IonCard className="editor-card">
                 <IonCardHeader>
                   <IonCardTitle>1. Complete the content</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
-                  <IonItem>
+                  <div className="section-heading-row">
+                    <div>
+                      <p className="section-kicker">Destination</p>
+                      <h3>Set the URL that your tag should open.</h3>
+                    </div>
+                    <span className="section-state">Required</span>
+                  </div>
+                  <IonItem className="editor-item">
                     <IonLabel position="stacked">Enter URL</IonLabel>
                     <IonInput
                       value={sourceUrl}
@@ -281,14 +451,22 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       onIonInput={(e) => setSourceUrl((e.detail.value ?? "").toString())}
                     />
                   </IonItem>
+                  <p className="section-helper">The app will normalize the link and generate a short code for the printable tag.</p>
                 </IonCardContent>
               </IonCard>
 
-              <IonCard>
+              <IonCard className="editor-card">
                 <IonCardHeader>
                   <IonCardTitle>2. Design your QR code</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
+                  <div className="section-heading-row">
+                    <div>
+                      <p className="section-kicker">Style system</p>
+                      <h3>Choose a tag treatment for the QR face.</h3>
+                    </div>
+                    <span className="section-state section-state--soft">{selectedTemplate.name}</span>
+                  </div>
                   <p className="template-picker-title">Template</p>
                   <div className="template-scroll-row" role="list" aria-label="Template options">
                     {TEMPLATE_PRESETS.map((preset) => {
@@ -338,18 +516,26 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   </IonText>
 
                   <IonButton className="action-btn" expand="block" onClick={handleGenerateQr}>
+                    <IonIcon slot="start" icon={arrowForwardOutline} />
                     Generate QR
                   </IonButton>
                 </IonCardContent>
               </IonCard>
 
-              <IonCard>
+              <IonCard className="editor-card">
                 <IonCardHeader>
                   <IonCardTitle>STL Parameters</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
+                  <div className="section-heading-row">
+                    <div>
+                      <p className="section-kicker">Output settings</p>
+                      <h3>Tune the geometry for printability and detail.</h3>
+                    </div>
+                    <span className="section-state">{stlParams.detail}</span>
+                  </div>
                   <div className="stl-grid">
-                    <IonItem>
+                    <IonItem className="editor-item">
                       <IonLabel position="stacked">Width (mm)</IonLabel>
                       <IonInput
                         type="number"
@@ -359,7 +545,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         }
                       />
                     </IonItem>
-                    <IonItem>
+                    <IonItem className="editor-item">
                       <IonLabel position="stacked">Height (mm)</IonLabel>
                       <IonInput
                         type="number"
@@ -369,7 +555,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         }
                       />
                     </IonItem>
-                    <IonItem>
+                    <IonItem className="editor-item">
                       <IonLabel position="stacked">Depth (mm)</IonLabel>
                       <IonInput
                         type="number"
@@ -379,7 +565,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         }
                       />
                     </IonItem>
-                    <IonItem>
+                    <IonItem className="editor-item">
                       <IonLabel position="stacked">Base (mm)</IonLabel>
                       <IonInput
                         type="number"
@@ -389,7 +575,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         }
                       />
                     </IonItem>
-                    <IonItem>
+                    <IonItem className="editor-item">
                       <IonLabel>Detail</IonLabel>
                       <IonSelect
                         value={stlParams.detail}
@@ -400,7 +586,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         <IonSelectOption value="high">High</IonSelectOption>
                       </IonSelect>
                     </IonItem>
-                    <IonItem lines="none">
+                    <IonItem className="editor-item" lines="none">
                       <IonLabel>Invert output</IonLabel>
                       <IonToggle
                         checked={stlParams.invert}
@@ -412,16 +598,34 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonCardContent>
               </IonCard>
 
+              <div className="inline-promo-strip">
+                <div>
+                  <p className="inline-promo-strip__label">Growth slot</p>
+                  <strong>Reserved for future in-app promotion</strong>
+                  <span>Use this horizontal module for sponsor copy, premium upsells, or launch announcements.</span>
+                </div>
+                <IonButton fill="outline" onClick={user ? handleUpgrade : () => history.push("/auth")}>
+                  {user ? "See premium options" : "Sign in for sync"}
+                </IonButton>
+              </div>
+
               {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
               {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
-            </IonCol>
+            </main>
 
-            <IonCol size="12" sizeLg="4">
-              <IonCard>
+            <aside className="workspace-rail">
+              <IonCard className="editor-card editor-card--rail">
                 <IonCardHeader>
                   <IonCardTitle>3. Preview and Export</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
+                  <div className="section-heading-row section-heading-row--rail">
+                    <div>
+                      <p className="section-kicker">Preview rail</p>
+                      <h3>Review every stage before final export.</h3>
+                    </div>
+                    <span className="section-state section-state--soft">Live</span>
+                  </div>
                   <p className="stage-label">Step 1: QR code preview</p>
                   <div className="preview-box stage-preview-box">
                     {qrDataUrl ? <img src={qrDataUrl} alt="QR preview" /> : <span>Generate a QR to begin.</span>}
@@ -429,6 +633,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
                   <div className="stage-action-row">
                     <IonButton expand="block" fill="outline" disabled={!qrDataUrl} onClick={handleComposePreview}>
+                      <IonIcon slot="start" icon={checkmarkCircleOutline} />
                       Preview Selected Tag
                     </IonButton>
                   </div>
@@ -449,6 +654,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       disabled={!generated || !composedPreviewUrl}
                       onClick={handleGenerateModelPreview}
                     >
+                      <IonIcon slot="start" icon={prismOutline} />
                       Generate 3D Model Preview
                     </IonButton>
                   </div>
@@ -491,7 +697,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonCardContent>
               </IonCard>
 
-              <IonCard>
+              <div className="sponsor-slot sponsor-slot--rail">
+                <p className="sponsor-slot__label">Right-rail ad slot</p>
+                <strong>Future sponsor card</strong>
+                <span>Desktop-only promotional inventory sized for network ads, affiliates, or partner promos.</span>
+              </div>
+
+              <IonCard className="editor-card editor-card--rail">
                 <IonCardHeader>
                   <IonCardTitle>Your recent QR tags</IonCardTitle>
                 </IonCardHeader>
@@ -534,9 +746,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   )}
                 </IonCardContent>
               </IonCard>
-            </IonCol>
-          </IonRow>
-        </IonGrid>
+            </aside>
+          </div>
+        </div>
         <AppFooter />
       </IonContent>
     </IonPage>

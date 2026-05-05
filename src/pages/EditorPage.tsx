@@ -27,7 +27,7 @@ import { User } from "@supabase/supabase-js";
 import { TEMPLATE_PRESETS } from "../constants/templates";
 import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
 import { composeTemplatePreview } from "../lib/templatePreview";
-import { createQrObjBlob, createQrStlBlob, downloadStl } from "../lib/stl";
+import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../lib/stl";
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
@@ -175,6 +175,11 @@ const EditorPage: React.FC<Props> = ({ user }) => {
       return;
     }
 
+    if (!composedPreviewUrl) {
+      setError("Compose the template + QR preview first.");
+      return;
+    }
+
     if (!modelPreviewReady) {
       setError("Generate the 3D model preview first.");
       return;
@@ -189,8 +194,8 @@ const EditorPage: React.FC<Props> = ({ user }) => {
     try {
       const blob =
         modelFormat === "stl"
-          ? createQrStlBlob(generated.shortUrl, stlParams)
-          : createQrObjBlob(generated.shortUrl, stlParams);
+          ? await createTemplateStlBlob(composedPreviewUrl, stlParams)
+          : await createTemplateObjBlob(composedPreviewUrl, stlParams);
       const extension = modelFormat === "stl" ? "stl" : "obj";
       downloadStl(blob, `qr-tag-${generated.code}.${extension}`);
 
@@ -408,7 +413,7 @@ const EditorPage: React.FC<Props> = ({ user }) => {
                   <p className="stage-label">Step 3: 3D model preview</p>
                   <div className="preview-box model-preview-box">
                     {modelPreviewReady && generated ? (
-                      <ModelPreviewCanvas value={generated.shortUrl} params={stlParams} />
+                      <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
                     ) : (
                       <span>Generate model preview to render your 3D tag.</span>
                     )}

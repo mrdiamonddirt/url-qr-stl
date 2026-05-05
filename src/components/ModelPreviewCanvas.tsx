@@ -1,15 +1,15 @@
 import { useEffect, useRef } from "react";
-import { AmbientLight, Color, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer } from "three";
+import { AmbientLight, Color, DirectionalLight, Group, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { StlParams } from "../types";
-import { createQrModelGroup, disposeQrModelGroup } from "../lib/modelGeometry";
+import { createTemplateModelGroup, disposeQrModelGroup } from "../lib/modelGeometry";
 
 type Props = {
-  value: string;
+  imageDataUrl: string;
   params: StlParams;
 };
 
-const ModelPreviewCanvas: React.FC<Props> = ({ value, params }) => {
+const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -47,11 +47,9 @@ const ModelPreviewCanvas: React.FC<Props> = ({ value, params }) => {
     scene.add(ambient);
     scene.add(keyLight);
 
-    const modelGroup = createQrModelGroup(value, params);
-    scene.add(modelGroup);
-
     let active = true;
     let frameId = 0;
+    let modelGroup: Group | null = null;
 
     const renderLoop = () => {
       if (!active) {
@@ -64,6 +62,20 @@ const ModelPreviewCanvas: React.FC<Props> = ({ value, params }) => {
     };
 
     renderLoop();
+
+    void createTemplateModelGroup(imageDataUrl, params)
+      .then((group) => {
+        if (!active) {
+          disposeQrModelGroup(group);
+          return;
+        }
+
+        modelGroup = group;
+        scene.add(group);
+      })
+      .catch(() => {
+        active = false;
+      });
 
     const resizeObserver = new ResizeObserver(() => {
       const nextWidth = host.clientWidth || 320;
@@ -80,12 +92,14 @@ const ModelPreviewCanvas: React.FC<Props> = ({ value, params }) => {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       controls.dispose();
-      scene.remove(modelGroup);
-      disposeQrModelGroup(modelGroup);
+      if (modelGroup) {
+        scene.remove(modelGroup);
+        disposeQrModelGroup(modelGroup);
+      }
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [value, params]);
+  }, [imageDataUrl, params]);
 
   return <div className="model-canvas-host" ref={hostRef} />;
 };

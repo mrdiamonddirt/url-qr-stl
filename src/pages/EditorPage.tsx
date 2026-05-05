@@ -637,6 +637,83 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           </section>
 
           <div className="workspace-shell">
+            <IonCard className="editor-card editor-card--recent">
+              <IonCardHeader>
+                <IonCardTitle>Your recent QR tags</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                {user && profile?.plan === "free" && (
+                  <IonCard color="warning" style={{ marginBottom: 12 }}>
+                    <IonCardContent>
+                      <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
+                      {" "}
+                      <IonButton size="small" onClick={handleUpgrade}>
+                        Upgrade to Premium - £3.99/mo
+                      </IonButton>
+                    </IonCardContent>
+                  </IonCard>
+                )}
+                {supabaseHistory.length > 0 ? (
+                  <ul className="history-list">
+                    {supabaseHistory.map((row) => (
+                      <li key={row.short_code}>
+                        <button
+                          type="button"
+                          className="history-select-btn"
+                          onClick={() => {
+                            void handleSelectSupabaseTag(row);
+                          }}
+                          aria-label={`Load previous tag ${row.short_code}`}
+                        >
+                          <strong>{row.short_code}</strong>
+                          <span>{row.original_url}</span>
+                          <IonBadge
+                            color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
+                          >
+                            {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
+                          </IonBadge>
+                        </button>
+                        {user && (
+                          <button
+                            type="button"
+                            className="history-delete-btn"
+                            aria-label={`Delete tag ${row.short_code}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete tag ${row.short_code}? Existing scan links will stop working.`)) {
+                                void handleDeleteTag(row.short_code);
+                              }
+                            }}
+                          >
+                            <IonIcon icon={trashOutline} />
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="history-list">
+                    {recentByUser.slice(0, 5).map((record) => (
+                      <li key={record.id}>
+                        <button
+                          type="button"
+                          className="history-select-btn"
+                          onClick={() => {
+                            void restoreFromRecord(record);
+                          }}
+                          aria-label={`Load previous tag ${record.code}`}
+                        >
+                          <strong>{record.code}</strong>
+                          <span>{record.originalUrl}</span>
+                        </button>
+                      </li>
+                    ))}
+                    {!recentByUser.length && <li>No tags generated yet.</li>}
+                  </ul>
+                )}
+              </IonCardContent>
+            </IonCard>
+
             <main className="workspace-main">
               <IonCard className="editor-card editor-card--intro">
                 <IonCardContent>
@@ -654,7 +731,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonCardContent>
               </IonCard>
 
-              <IonCard className="editor-card">
+              <IonCard className="editor-card editor-card--stl">
                 <IonCardHeader>
                   <IonCardTitle>STL Parameters</IonCardTitle>
                 </IonCardHeader>
@@ -735,83 +812,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 <strong>Flexible content block</strong>
                 <span>Keep this area free for announcements, seasonal promotions, or partner-led storytelling.</span>
               </div>
-
-              <IonCard className="editor-card editor-card--rail">
-                <IonCardHeader>
-                  <IonCardTitle>Your recent QR tags</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  {user && profile?.plan === "free" && (
-                    <IonCard color="warning" style={{ marginBottom: 12 }}>
-                      <IonCardContent>
-                        <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
-                        {" "}
-                        <IonButton size="small" onClick={handleUpgrade}>
-                          Upgrade to Premium – £3.99/mo
-                        </IonButton>
-                      </IonCardContent>
-                    </IonCard>
-                  )}
-                  {supabaseHistory.length > 0 ? (
-                    <ul className="history-list">
-                      {supabaseHistory.map((row) => (
-                        <li key={row.short_code}>
-                          <button
-                            type="button"
-                            className="history-select-btn"
-                            onClick={() => {
-                              void handleSelectSupabaseTag(row);
-                            }}
-                            aria-label={`Load previous tag ${row.short_code}`}
-                          >
-                            <strong>{row.short_code}</strong>
-                            <span>{row.original_url}</span>
-                            <IonBadge
-                              color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
-                            >
-                              {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
-                            </IonBadge>
-                          </button>
-                          {user && (
-                            <button
-                              type="button"
-                              className="history-delete-btn"
-                              aria-label={`Delete tag ${row.short_code}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm(`Delete tag ${row.short_code}? Existing scan links will stop working.`)) {
-                                  void handleDeleteTag(row.short_code);
-                                }
-                              }}
-                            >
-                              <IonIcon icon={trashOutline} />
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <ul className="history-list">
-                      {recentByUser.slice(0, 5).map((record) => (
-                        <li key={record.id}>
-                          <button
-                            type="button"
-                            className="history-select-btn"
-                            onClick={() => {
-                              void restoreFromRecord(record);
-                            }}
-                            aria-label={`Load previous tag ${record.code}`}
-                          >
-                            <strong>{record.code}</strong>
-                            <span>{record.originalUrl}</span>
-                          </button>
-                        </li>
-                      ))}
-                      {!recentByUser.length && <li>No tags generated yet.</li>}
-                    </ul>
-                  )}
-                </IonCardContent>
-              </IonCard>
 
               <div className="inline-promo-strip">
                 <div>

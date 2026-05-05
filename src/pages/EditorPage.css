@@ -552,8 +552,14 @@
   order: 1;
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.6fr);
-  grid-template-areas: "rail main";
+  grid-template-areas:
+    "rail main"
+    "rail recent";
   gap: 22px;
+}
+
+.editor-card--recent {
+  grid-area: recent;
 }
 
 .workspace-main,
@@ -598,9 +604,15 @@
 
 .workflow-banner {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 18px;
-  align-items: end;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.workflow-banner > div:first-child {
+  flex: 1 1 260px;
+  min-width: 220px;
 }
 
 .workflow-banner h2,
@@ -611,13 +623,13 @@
 }
 
 .workflow-banner h2 {
-  max-width: 24ch;
+  max-width: 26ch;
 }
 
 .workflow-steps {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -635,8 +647,17 @@
 }
 
 .workflow-steps span {
-  background: #eef4f8;
-  color: #29405a;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(45, 74, 106, 0.14);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
+  color: #2a405b;
+  box-shadow: 0 4px 10px rgba(19, 44, 69, 0.06);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .section-heading-row {
@@ -1240,6 +1261,23 @@
       "rail";
   }
 
+  .workflow-banner {
+    align-items: flex-start;
+  }
+
+  .workflow-banner > div:first-child {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+
+  .workflow-banner h2 {
+    max-width: none;
+  }
+
+  .workflow-steps {
+    justify-content: flex-start;
+  }
+
   .hero-metrics {
     grid-template-columns: 1fr;
   }
@@ -1312,6 +1350,26 @@
     align-items: stretch;
   }
 
+  .workflow-banner > div:first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .workflow-banner h2 {
+    width: 100%;
+    max-width: none;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+
+  .workflow-steps {
+    justify-content: flex-start;
+  }
+
+  .workflow-steps span {
+    font-size: 0.68rem;
+  }
+
   .account-drawer {
     width: 100%;
     border-top-left-radius: 0;
@@ -1332,6 +1390,33 @@
   .timeline-tab {
     min-height: 56px;
   }
+
+  /* Flatten workspace-shell into a single flex column so cards can be
+     individually ordered: workflow → recent → preview → STL → extras */
+  .workspace-shell {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: unset;
+    grid-template-areas: unset;
+  }
+
+  /* Dissolve workspace-main so its children become direct flex items */
+  .workspace-main {
+    display: contents;
+  }
+
+  /* Catch-all: status/error IonText inside workspace-main have no class,
+     push them to the very bottom so they never float to the top */
+  .workspace-main > * {
+    order: 99;
+  }
+
+  .editor-card--intro  { order: 1; }
+  .editor-card--recent { order: 2; }
+  .workspace-rail      { order: 3; }
+  .editor-card--stl    { order: 4; }
+  .sponsor-slot--rail  { order: 5; }
+  .inline-promo-strip  { order: 6; }
 }
 
 /* Loop preview — overlay Controls box inside the preview window */

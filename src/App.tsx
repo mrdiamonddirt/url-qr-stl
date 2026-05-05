@@ -40,6 +40,8 @@ import './theme/variables.css';
 
 setupIonicReact();
 
+const ROUTER_BASENAME = import.meta.env.BASE_URL;
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
 
@@ -70,7 +72,7 @@ const App: React.FC = () => {
 
   return (
     <IonApp>
-      <IonReactRouter>
+      <IonReactRouter basename={ROUTER_BASENAME}>
         <IonRouterOutlet>
           <Route exact path="/editor">
             <EditorPage user={user} />

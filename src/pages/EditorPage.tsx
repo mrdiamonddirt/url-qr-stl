@@ -34,6 +34,7 @@ import { toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
 import { createCheckoutSession, getUserShortUrls, signOut, supabase } from "../lib/supabaseClient";
 import { ModelFormat, Profile, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
+import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
 
 const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
@@ -536,6 +537,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             </IonCol>
           </IonRow>
         </IonGrid>
+        <AppFooter />
       </IonContent>
     </IonPage>
   );

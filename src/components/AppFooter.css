@@ -1,0 +1,30 @@
+.app-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  padding: 10px 24px;
+  font-size: 0.75rem;
+  opacity: 0.85;
+  background: var(--ion-background-color, #ffffff);
+  border-top: 1px solid var(--ion-color-light-shade, #d7d8da);
+  z-index: 100;
+}
+
+.app-footer a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.app-footer a:hover {
+  opacity: 1;
+}
+
+.footer-sep {
+  margin: 0 6px;
+}
+
+.footer-version {
+  font-variant-numeric: tabular-nums;
+}

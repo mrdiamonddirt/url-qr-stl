@@ -7,6 +7,7 @@ import EditorPage from './pages/EditorPage';
 import AuthPage from './pages/AuthPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import RedirectPage from './pages/RedirectPage';
+import TermsPage from './pages/TermsPage';
 import { getCurrentUser, getProfile, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
 import { Profile } from './types';
@@ -100,6 +101,9 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/s/:code">
             <RedirectPage />
+          </Route>
+          <Route exact path="/terms">
+            <TermsPage />
           </Route>
           <Route exact path="/">
             <Redirect to="/editor" />

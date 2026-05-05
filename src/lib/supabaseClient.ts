@@ -20,8 +20,8 @@ export async function signInWithGoogle() {
     throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
   }
 
-  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-  const redirectTo = `${window.location.origin}${base}/auth/callback`;
+  // Build callback from current location so subpath deploys (GitHub Pages) resolve correctly.
+  const redirectTo = new URL("auth/callback", window.location.href).toString();
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",

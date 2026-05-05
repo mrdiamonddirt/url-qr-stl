@@ -90,6 +90,7 @@ const RAIL_STAGES: Array<{ key: RailStage; label: string; hint: string }> = [
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
   const headerRef = useRef<HTMLElement | null>(null);
+  const templateValuesOverrideRef = useRef<Record<string, string> | null>(null);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(TEMPLATE_PRESETS[0].id);
@@ -136,7 +137,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
   useEffect(() => {
     const defaults = buildTemplateDefaults(selectedTemplate);
-    setTemplateValues(defaults);
+    if (templateValuesOverrideRef.current) {
+      const override = templateValuesOverrideRef.current;
+      templateValuesOverrideRef.current = null;
+      setTemplateValues({ ...defaults, ...override });
+    } else {
+      setTemplateValues(defaults);
+    }
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
   }, [selectedTemplate]);
@@ -248,6 +255,55 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate QR.");
     }
+  }
+
+  async function restoreFromRecord(record: ShortUrlRecord) {
+    setError("");
+    setStatus("");
+
+    const template = TEMPLATE_PRESETS.find((preset) => preset.id === record.templateId) ?? TEMPLATE_PRESETS[0];
+    const defaults = buildTemplateDefaults(template);
+
+    templateValuesOverrideRef.current = { ...defaults, ...(record.templateValues ?? {}) };
+
+    setSourceUrl(record.originalUrl);
+    setGenerated(record);
+    setSelectedTemplateId(template.id);
+    setComposedPreviewUrl("");
+    setModelPreviewReady(false);
+    setIsUrlEditorOpen(false);
+    setActiveRailStage("compose");
+
+    try {
+      setQrDataUrl(await toQrDataUrl(record.shortUrl));
+      setStatus(`Loaded tag ${record.code}. You can adjust template settings or export.`);
+    } catch (err) {
+      setQrDataUrl("");
+      setError(err instanceof Error ? err.message : "Could not restore QR preview.");
+    }
+  }
+
+  async function handleSelectSupabaseTag(row: SupabaseShortUrlRow) {
+    const localRecord = recentByUser.find((record) => record.code === row.short_code);
+    if (localRecord) {
+      await restoreFromRecord(localRecord);
+      return;
+    }
+
+    const fallbackTemplate = selectedTemplate;
+    const fallbackRecord: ShortUrlRecord = {
+      id: `supabase-${row.short_code}`,
+      code: row.short_code,
+      originalUrl: row.original_url,
+      shortUrl: shortUrlForCode(row.short_code),
+      templateId: fallbackTemplate.id,
+      templateValues: buildTemplateDefaults(fallbackTemplate),
+      userId: user?.id,
+      createdAt: row.created_at,
+    };
+
+    await restoreFromRecord(fallbackRecord);
+    setStatus(`Loaded tag ${row.short_code}. Template details were not available, so current template settings were used.`);
   }
 
   function handleGenerateModelPreview() {
@@ -615,13 +671,22 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <ul className="history-list">
                       {supabaseHistory.map((row) => (
                         <li key={row.short_code}>
-                          <strong>{row.short_code}</strong>
-                          <span>{row.original_url}</span>
-                          <IonBadge
-                            color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
+                          <button
+                            type="button"
+                            className="history-select-btn"
+                            onClick={() => {
+                              void handleSelectSupabaseTag(row);
+                            }}
+                            aria-label={`Load previous tag ${row.short_code}`}
                           >
-                            {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
-                          </IonBadge>
+                            <strong>{row.short_code}</strong>
+                            <span>{row.original_url}</span>
+                            <IonBadge
+                              color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
+                            >
+                              {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
+                            </IonBadge>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -629,8 +694,17 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <ul className="history-list">
                       {recentByUser.slice(0, 5).map((record) => (
                         <li key={record.id}>
-                          <strong>{record.code}</strong>
-                          <span>{record.originalUrl}</span>
+                          <button
+                            type="button"
+                            className="history-select-btn"
+                            onClick={() => {
+                              void restoreFromRecord(record);
+                            }}
+                            aria-label={`Load previous tag ${record.code}`}
+                          >
+                            <strong>{record.code}</strong>
+                            <span>{record.originalUrl}</span>
+                          </button>
                         </li>
                       ))}
                       {!recentByUser.length && <li>No tags generated yet.</li>}
@@ -769,7 +843,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         </div>
                         {modelPreviewReady && (
                           <IonText color="medium">
-                            <p className="model-hint">Drag to rotate, scroll/pinch to zoom, and right-drag to pan.</p>
+                            <p className="model-hint">Drag to rotate, use controls to pan and zoom, or tap Home to reset the view.</p>
                           </IonText>
                         )}
                       </>

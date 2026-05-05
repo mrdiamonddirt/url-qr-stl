@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   IonBadge,
   IonButton,
@@ -62,7 +62,16 @@ type Props = {
   profile: Profile | null;
 };
 
+type RailStage = "import" | "compose" | "render" | "export";
+
 const FREE_SCAN_LIMIT = 20;
+
+const RAIL_STAGES: Array<{ key: RailStage; label: string; hint: string }> = [
+  { key: "import", label: "Import URL", hint: "Generate short URL + QR" },
+  { key: "compose", label: "Template Edit", hint: "Compose tag preview" },
+  { key: "render", label: "Render", hint: "Generate 3D preview" },
+  { key: "export", label: "Export", hint: "Download STL or OBJ" },
+];
 
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
@@ -79,6 +88,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
   const [modelFormat, setModelFormat] = useState<ModelFormat>("stl");
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
+  const [activeRailStage, setActiveRailStage] = useState<RailStage>("import");
+  const [isUrlEditorOpen, setIsUrlEditorOpen] = useState(true);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -95,6 +106,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     const segments = source.split(/[@.\s_-]+/).filter(Boolean);
     return segments.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U2";
   }, [user?.email]);
+
+  const railStageProgress = useMemo(() => {
+    if (modelPreviewReady) {
+      return 100;
+    }
+    if (composedPreviewUrl) {
+      return 67;
+    }
+    if (qrDataUrl) {
+      return 34;
+    }
+    return 10;
+  }, [composedPreviewUrl, modelPreviewReady, qrDataUrl]);
 
   useEffect(() => {
     const defaults = selectedTemplate.fields.reduce<Record<string, string>>((acc, item) => {
@@ -168,6 +192,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setQrDataUrl(await toQrDataUrl(shortUrl));
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
+      setIsUrlEditorOpen(false);
+      setActiveRailStage("compose");
 
       if (supabase && user) {
         await supabase.from("short_urls").insert({
@@ -206,6 +232,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
       setComposedPreviewUrl(image);
       setModelPreviewReady(false);
+      setActiveRailStage("render");
       setStatus("Step 2 complete. Generate the 3D model preview next.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not compose template preview.");
@@ -222,6 +249,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     setModelPreviewReady(true);
+    setActiveRailStage("export");
     setStatus("Step 3 ready. Rotate preview loaded.");
   }
 
@@ -307,34 +335,36 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     <IonPage>
       <IonHeader className="editor-header" ref={(node) => { headerRef.current = node as unknown as HTMLElement | null; }}>
         <IonToolbar className="editor-toolbar">
-          <div className="editor-toolbar__brand">
-            <div className="editor-toolbar__mark">U2S</div>
-            <div className="editor-toolbar__brand-copy">
-              <div className="editor-toolbar__title">URL 2 SQL</div>
-              <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
+          <div className="editor-toolbar__inner">
+            <div className="editor-toolbar__brand">
+              <div className="editor-toolbar__mark">U2S</div>
+              <div className="editor-toolbar__brand-copy">
+                <div className="editor-toolbar__title">URL 2 SQL</div>
+                <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
+              </div>
             </div>
-          </div>
-          <div className="editor-toolbar__actions">
-            <div className="editor-toolbar__chip-list">
-              <span className="toolbar-chip">QR Tag Studio</span>
+            <div className="editor-toolbar__actions">
+              <div className="editor-toolbar__chip-list">
+                <span className="toolbar-chip">QR Tag Studio</span>
+              </div>
+              {user && profile?.plan === "premium" && (
+                <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
+              )}
+              <button
+                type="button"
+                className={`account-trigger ${accountPanelOpen ? "is-open" : ""}`}
+                onClick={toggleAccountPanel}
+                aria-label="Open account panel"
+                aria-expanded={accountPanelOpen}
+              >
+                <span className="account-trigger__avatar">{accountInitials}</span>
+                <span className="account-trigger__copy">
+                  <strong>{accountTriggerLabel}</strong>
+                  <span>{planLabel} plan</span>
+                </span>
+                <IonIcon icon={chevronDownOutline} />
+              </button>
             </div>
-            {user && profile?.plan === "premium" && (
-              <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
-            )}
-            <button
-              type="button"
-              className={`account-trigger ${accountPanelOpen ? "is-open" : ""}`}
-              onClick={toggleAccountPanel}
-              aria-label="Open account panel"
-              aria-expanded={accountPanelOpen}
-            >
-              <span className="account-trigger__avatar">{accountInitials}</span>
-              <span className="account-trigger__copy">
-                <strong>{accountTriggerLabel}</strong>
-                <span>{planLabel} plan</span>
-              </span>
-              <IonIcon icon={chevronDownOutline} />
-            </button>
           </div>
         </IonToolbar>
       </IonHeader>
@@ -474,97 +504,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
               <IonCard className="editor-card">
                 <IonCardHeader>
-                  <IonCardTitle>1. Complete the content</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <div className="section-heading-row">
-                    <div>
-                      <p className="section-kicker">Destination</p>
-                      <h3>Set the URL that your tag should open.</h3>
-                    </div>
-                    <span className="section-state">Required</span>
-                  </div>
-                  <IonItem className="editor-item">
-                    <IonLabel position="stacked">Enter URL</IonLabel>
-                    <IonInput
-                      value={sourceUrl}
-                      placeholder="https://example.com/page"
-                      onIonInput={(e) => setSourceUrl((e.detail.value ?? "").toString())}
-                    />
-                  </IonItem>
-                  <p className="section-helper">The app will normalize the link and generate a short code for the printable tag.</p>
-                </IonCardContent>
-              </IonCard>
-
-              <IonCard className="editor-card">
-                <IonCardHeader>
-                  <IonCardTitle>2. Design your QR code</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <div className="section-heading-row">
-                    <div>
-                      <p className="section-kicker">Style system</p>
-                      <h3>Choose a tag treatment for the QR face.</h3>
-                    </div>
-                    <span className="section-state section-state--soft">{selectedTemplate.name}</span>
-                  </div>
-                  <p className="template-picker-title">Template</p>
-                  <div className="template-scroll-row" role="list" aria-label="Template options">
-                    {TEMPLATE_PRESETS.map((preset) => {
-                      const isActive = preset.id === selectedTemplateId;
-                      return (
-                        <div key={preset.id} className="template-option" role="listitem">
-                          <button
-                            type="button"
-                            className={`template-button ${isActive ? "is-active" : ""}`}
-                            style={{
-                              borderColor: isActive ? preset.accentColor : "#c7d1dd",
-                              background: isActive ? "#f8fbff" : "#ffffff",
-                            }}
-                            onClick={() => setSelectedTemplateId(preset.id)}
-                            aria-label={`Select template ${preset.name}`}
-                          >
-                            <div
-                              className={`template-card-preview template-card-preview--${preset.borderStyle} template-card-preview--${preset.frameStyle}`}
-                              style={{ borderColor: preset.accentColor, color: preset.accentColor }}
-                            >
-                              <div className="template-card-surface">
-                                <div className="template-thumb-qr" aria-hidden="true">
-                                  <span className="finder finder-a" />
-                                  <span className="finder finder-b" />
-                                  <span className="finder finder-c" />
-                                </div>
-                              </div>
-                              {preset.ctaLabel ? <span className="template-card-cta">{preset.ctaLabel}</span> : null}
-                            </div>
-                            <span className="template-button-label">{preset.name}</span>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="template-selection-note">
-                    <strong>{selectedTemplate.name}</strong>
-                    <span>{selectedTemplate.description}</span>
-                    <small>
-                      QR only for now. {selectedTemplate.ctaLabel ? `This version includes a fixed "${selectedTemplate.ctaLabel}" callout.` : "Text stays off unless we add a text-capable layout later."}
-                    </small>
-                  </div>
-
-                  <IonText color="medium">
-                    <p className="template-empty-note">No text fields yet. Pick the border style you want and generate the QR.</p>
-                  </IonText>
-
-                  <IonButton className="action-btn" expand="block" onClick={handleGenerateQr}>
-                    <IonIcon slot="start" icon={arrowForwardOutline} />
-                    Generate QR
-                  </IonButton>
-                </IonCardContent>
-              </IonCard>
-
-              <IonCard className="editor-card">
-                <IonCardHeader>
                   <IonCardTitle>STL Parameters</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
@@ -639,105 +578,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonCardContent>
               </IonCard>
 
-              <div className="inline-promo-strip">
-                <div>
-                  <p className="inline-promo-strip__label">Studio update</p>
-                  <strong>Space for announcements and featured campaigns</strong>
-                  <span>Keep this module available for launches, premium messaging, or curated partner content.</span>
-                </div>
-                <IonButton fill="outline" onClick={user ? handleUpgrade : () => history.push("/auth")}>
-                  {user ? "See premium options" : "Sign in for sync"}
-                </IonButton>
-              </div>
-
-              {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
-              {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
-            </main>
-
-            <aside className="workspace-rail">
-              <IonCard className="editor-card editor-card--rail">
-                <IonCardHeader>
-                  <IonCardTitle>3. Preview and Export</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <div className="section-heading-row section-heading-row--rail">
-                    <div>
-                      <p className="section-kicker">Preview rail</p>
-                      <h3>Review every stage before final export.</h3>
-                    </div>
-                    <span className="section-state section-state--soft">Live</span>
-                  </div>
-                  <p className="stage-label">Step 1: QR code preview</p>
-                  <div className="preview-box stage-preview-box">
-                    {qrDataUrl ? <img src={qrDataUrl} alt="QR preview" /> : <span>Generate a QR to begin.</span>}
-                  </div>
-
-                  <div className="stage-action-row">
-                    <IonButton expand="block" fill="outline" disabled={!qrDataUrl} onClick={handleComposePreview}>
-                      <IonIcon slot="start" icon={checkmarkCircleOutline} />
-                      Preview Selected Tag
-                    </IonButton>
-                  </div>
-
-                  <p className="stage-label">Step 2: Template + QR preview</p>
-                  <div className="preview-box stage-preview-box">
-                    {composedPreviewUrl ? (
-                      <img src={composedPreviewUrl} alt="Template and QR preview" />
-                    ) : (
-                      <span>Compose to preview the selected tag layout before the 3D step.</span>
-                    )}
-                  </div>
-
-                  <div className="stage-action-row">
-                    <IonButton
-                      expand="block"
-                      fill="outline"
-                      disabled={!generated || !composedPreviewUrl}
-                      onClick={handleGenerateModelPreview}
-                    >
-                      <IonIcon slot="start" icon={prismOutline} />
-                      Generate 3D Model Preview
-                    </IonButton>
-                  </div>
-
-                  <p className="stage-label">Step 3: 3D model preview</p>
-                  <div className="preview-box model-preview-box">
-                    {modelPreviewReady && generated ? (
-                      <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
-                    ) : (
-                      <span>Generate model preview to render your 3D tag.</span>
-                    )}
-                  </div>
-                  {modelPreviewReady && (
-                    <IonText color="medium">
-                      <p className="model-hint">Drag to rotate, scroll/pinch to zoom, and right-drag to pan.</p>
-                    </IonText>
-                  )}
-
-                  <IonItem className="format-item">
-                    <IonLabel>Download format</IonLabel>
-                    <IonSelect value={modelFormat} onIonChange={(e) => setModelFormat(e.detail.value)}>
-                      <IonSelectOption value="stl">STL</IonSelectOption>
-                      <IonSelectOption value="obj">OBJ</IonSelectOption>
-                    </IonSelect>
-                  </IonItem>
-
-                  <IonButton
-                    className="action-btn"
-                    expand="block"
-                    color="secondary"
-                    disabled={!modelPreviewReady}
-                    onClick={handleDownloadModel}
-                  >
-                    {user ? `Download ${modelFormat.toUpperCase()}` : "Sign in to download model"}
-                  </IonButton>
-
-                  <IonText>
-                    <p className="short-url-line">{generated?.shortUrl ?? "Generate to create a short URL"}</p>
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
-
               <div className="sponsor-slot sponsor-slot--rail">
                 <p className="sponsor-slot__label">Featured panel</p>
                 <strong>Flexible content block</strong>
@@ -785,6 +625,253 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       {!recentByUser.length && <li>No tags generated yet.</li>}
                     </ul>
                   )}
+                </IonCardContent>
+              </IonCard>
+
+              <div className="inline-promo-strip">
+                <div>
+                  <p className="inline-promo-strip__label">Studio update</p>
+                  <strong>Space for announcements and featured campaigns</strong>
+                  <span>Keep this module available for launches, premium messaging, or curated partner content.</span>
+                </div>
+                <IonButton fill="outline" onClick={user ? handleUpgrade : () => history.push("/auth")}>
+                  {user ? "See premium options" : "Sign in for sync"}
+                </IonButton>
+              </div>
+
+              {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
+              {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
+            </main>
+
+            <aside className="workspace-rail">
+              <IonCard className="editor-card editor-card--rail editor-card--preview-focus">
+                <IonCardHeader>
+                  <IonCardTitle>3. Preview and Export</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <div className="section-heading-row section-heading-row--rail">
+                    <div>
+                      <p className="section-kicker">Preview rail</p>
+                      <h3>Review every stage before final export.</h3>
+                    </div>
+                    <span className="section-state section-state--soft">Live</span>
+                  </div>
+
+                  <div className="timeline-rail" aria-label="Preview timeline">
+                    <div className="timeline-rail__track" style={{ "--timeline-progress": `${railStageProgress}%` } as CSSProperties} />
+                    <div className="timeline-rail__tabs" role="tablist" aria-label="Preview stages">
+                      {RAIL_STAGES.map((stage, index) => {
+                        const isActive = activeRailStage === stage.key;
+                        return (
+                          <button
+                            key={stage.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className={`timeline-tab ${isActive ? "is-active" : ""}`}
+                            onClick={() => setActiveRailStage(stage.key)}
+                          >
+                            <span className="timeline-tab__index">{index + 1}</span>
+                            <span className="timeline-tab__copy">
+                              <strong>{stage.label}</strong>
+                              <small>{stage.hint}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="timeline-stage-shell" role="tabpanel">
+                    {activeRailStage === "import" && (
+                      <>
+                        <p className="stage-label">Import URL and generate QR</p>
+                        <div className="preview-box stage-preview-box preview-box--import">
+                          {qrDataUrl && !isUrlEditorOpen ? (
+                            <>
+                              <button
+                                type="button"
+                                className="preview-corner-edit"
+                                onClick={() => {
+                                  setActiveRailStage("import");
+                                  setIsUrlEditorOpen(true);
+                                }}
+                              >
+                                Edit URL
+                              </button>
+                              <img src={qrDataUrl} alt="QR preview" />
+                            </>
+                          ) : (
+                            <div className="preview-url-editor">
+                              <IonItem className="editor-item preview-url-editor__item">
+                                <IonLabel position="stacked">Enter URL</IonLabel>
+                                <IonInput
+                                  value={sourceUrl}
+                                  placeholder="https://example.com/page"
+                                  onIonInput={(e) => setSourceUrl((e.detail.value ?? "").toString())}
+                                />
+                              </IonItem>
+                              <IonButton expand="block" fill="outline" onClick={handleGenerateQr}>
+                                <IonIcon slot="start" icon={arrowForwardOutline} />
+                                {qrDataUrl ? "Re-render QR" : "Generate QR"}
+                              </IonButton>
+                              {qrDataUrl && (
+                                <IonButton
+                                  expand="block"
+                                  fill="clear"
+                                  onClick={() => setIsUrlEditorOpen(false)}
+                                >
+                                  Cancel edit
+                                </IonButton>
+                              )}
+                              <p className="section-helper preview-url-editor__helper">
+                                The app normalizes your link and regenerates the QR in this panel.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {activeRailStage === "compose" && (
+                      <>
+                        <p className="stage-label">Compose template and QR</p>
+                        <div className="preview-box stage-preview-box">
+                          {composedPreviewUrl ? (
+                            <img src={composedPreviewUrl} alt="Template and QR preview" />
+                          ) : (
+                            <span>Compose to preview the selected tag layout before the 3D step.</span>
+                          )}
+                        </div>
+                        <div className="stage-action-row">
+                          <IonButton expand="block" fill="outline" disabled={!qrDataUrl} onClick={handleComposePreview}>
+                            <IonIcon slot="start" icon={checkmarkCircleOutline} />
+                            Preview Selected Tag
+                          </IonButton>
+                        </div>
+                      </>
+                    )}
+
+                    {activeRailStage === "render" && (
+                      <>
+                        <p className="stage-label">Render 3D model preview</p>
+                        <div className="preview-box model-preview-box">
+                          {modelPreviewReady && generated ? (
+                            <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
+                          ) : (
+                            <span>Generate model preview to render your 3D tag.</span>
+                          )}
+                        </div>
+                        <div className="stage-action-row">
+                          <IonButton
+                            expand="block"
+                            fill="outline"
+                            disabled={!generated || !composedPreviewUrl}
+                            onClick={handleGenerateModelPreview}
+                          >
+                            <IonIcon slot="start" icon={prismOutline} />
+                            Generate 3D Model Preview
+                          </IonButton>
+                        </div>
+                        {modelPreviewReady && (
+                          <IonText color="medium">
+                            <p className="model-hint">Drag to rotate, scroll/pinch to zoom, and right-drag to pan.</p>
+                          </IonText>
+                        )}
+                      </>
+                    )}
+
+                    {activeRailStage === "export" && (
+                      <>
+                        <p className="stage-label">Export final model</p>
+                        <div className="preview-box model-preview-box">
+                          {modelPreviewReady && generated ? (
+                            <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
+                          ) : (
+                            <span>Complete render to unlock exports.</span>
+                          )}
+                        </div>
+                        <IonItem className="format-item">
+                          <IonLabel>Download format</IonLabel>
+                          <IonSelect value={modelFormat} onIonChange={(e) => setModelFormat(e.detail.value)}>
+                            <IonSelectOption value="stl">STL</IonSelectOption>
+                            <IonSelectOption value="obj">OBJ</IonSelectOption>
+                          </IonSelect>
+                        </IonItem>
+
+                        <IonButton
+                          className="action-btn"
+                          expand="block"
+                          color="secondary"
+                          disabled={!modelPreviewReady}
+                          onClick={handleDownloadModel}
+                        >
+                          {user ? `Download ${modelFormat.toUpperCase()}` : "Sign in to download model"}
+                        </IonButton>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="preview-template-section">
+                    <div className="section-heading-row section-heading-row--rail section-heading-row--compact">
+                      <div>
+                        <p className="section-kicker">Template options</p>
+                        <h3>Place your tag style beneath the live preview.</h3>
+                      </div>
+                      <span className="section-state section-state--soft">{selectedTemplate.name}</span>
+                    </div>
+                    <p className="template-picker-title">Template</p>
+                    <div className="template-scroll-row" role="list" aria-label="Template options">
+                      {TEMPLATE_PRESETS.map((preset) => {
+                        const isActive = preset.id === selectedTemplateId;
+                        return (
+                          <div key={preset.id} className="template-option" role="listitem">
+                            <button
+                              type="button"
+                              className={`template-button ${isActive ? "is-active" : ""}`}
+                              style={{
+                                borderColor: isActive ? preset.accentColor : "#c7d1dd",
+                                background: isActive ? "#f8fbff" : "#ffffff",
+                              }}
+                              onClick={() => setSelectedTemplateId(preset.id)}
+                              aria-label={`Select template ${preset.name}`}
+                            >
+                              <div
+                                className={`template-card-preview template-card-preview--${preset.borderStyle} template-card-preview--${preset.frameStyle}`}
+                                style={{ borderColor: preset.accentColor, color: preset.accentColor }}
+                              >
+                                <div className="template-card-surface">
+                                  <div className="template-thumb-qr" aria-hidden="true">
+                                    <span className="finder finder-a" />
+                                    <span className="finder finder-b" />
+                                    <span className="finder finder-c" />
+                                  </div>
+                                </div>
+                                {preset.ctaLabel ? <span className="template-card-cta">{preset.ctaLabel}</span> : null}
+                              </div>
+                              <span className="template-button-label">{preset.name}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="template-selection-note">
+                      <strong>{selectedTemplate.name}</strong>
+                      <span>{selectedTemplate.description}</span>
+                      <small>
+                        QR only for now. {selectedTemplate.ctaLabel ? `This version includes a fixed "${selectedTemplate.ctaLabel}" callout.` : "Text stays off unless we add a text-capable layout later."}
+                      </small>
+                    </div>
+
+                    <IonText color="medium">
+                      <p className="template-empty-note">No text fields yet. Pick the border style you want and generate the QR.</p>
+                    </IonText>
+                  </div>
+
+                  <IonText>
+                    <p className="short-url-line">{generated?.shortUrl ?? "Generate to create a short URL"}</p>
+                  </IonText>
                 </IonCardContent>
               </IonCard>
             </aside>

@@ -43,7 +43,7 @@ jobs:
       - name: Inject build meta (timestamp & SHA)
         run: |
           npm install --no-save
-          node scripts/inject-build-meta.js
+          node scripts/inject-build-meta.cjs
         env:
           GITHUB_SHA: ${{ github.sha }}
 

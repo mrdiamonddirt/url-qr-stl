@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import {
   IonButton,
   IonCard,
@@ -7,9 +7,6 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
-  IonInput,
-  IonItem,
-  IonLabel,
   IonPage,
   IonText,
   IonTitle,
@@ -17,7 +14,7 @@ import {
 } from "@ionic/react";
 import { useHistory } from "react-router";
 import { User } from "@supabase/supabase-js";
-import { sendMagicLink, supabase } from "../lib/supabaseClient";
+import { signInWithGoogle, supabase } from "../lib/supabaseClient";
 
 type Props = {
   user: User | null;
@@ -25,8 +22,6 @@ type Props = {
 
 const AuthPage: React.FC<Props> = ({ user }) => {
   const history = useHistory();
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
   if (user) {
@@ -34,21 +29,18 @@ const AuthPage: React.FC<Props> = ({ user }) => {
     return null;
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function handleGoogleSignIn() {
     setError("");
-    setStatus("");
 
     if (!supabase) {
-      setError("Supabase is not configured. Add environment keys to enable Magic Link sign-in.");
+      setError("Supabase is not configured. Add environment keys to enable Google sign-in.");
       return;
     }
 
     try {
-      await sendMagicLink(email.trim());
-      setStatus("Check your inbox for the Magic Link.");
+      await signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send Magic Link.");
+      setError(err instanceof Error ? err.message : "Could not sign in with Google.");
     }
   }
 
@@ -62,28 +54,15 @@ const AuthPage: React.FC<Props> = ({ user }) => {
       <IonContent fullscreen>
         <IonCard className="auth-card">
           <IonCardHeader>
-            <IonCardTitle>Magic Link Authentication</IonCardTitle>
+            <IonCardTitle>Sign in</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
-            <form onSubmit={handleSubmit}>
-              <IonItem>
-                <IonLabel position="stacked">Email</IonLabel>
-                <IonInput
-                  value={email}
-                  type="email"
-                  autocomplete="email"
-                  placeholder="you@company.com"
-                  onIonInput={(e) => setEmail((e.detail.value ?? "").toString())}
-                />
-              </IonItem>
-              <IonButton type="submit" expand="block" className="ion-margin-top">
-                Send Magic Link
-              </IonButton>
-              <IonButton type="button" expand="block" fill="clear" onClick={() => history.push("/editor")}>
-                Back to Editor
-              </IonButton>
-            </form>
-            {status && <IonText color="success"><p>{status}</p></IonText>}
+            <IonButton expand="block" onClick={handleGoogleSignIn}>
+              Sign in with Google
+            </IonButton>
+            <IonButton expand="block" fill="clear" onClick={() => history.push("/editor")}>
+              Back to Editor
+            </IonButton>
             {error && <IonText color="danger"><p>{error}</p></IonText>}
           </IonCardContent>
         </IonCard>

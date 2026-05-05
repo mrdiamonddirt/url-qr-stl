@@ -266,8 +266,40 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
     try {
       const normalized = ensureHttpUrl(sourceUrl);
-      const code = makeCode();
-      const shortUrl = shortUrlForCode(code);
+      let code = makeCode();
+      let shortUrl = shortUrlForCode(code);
+
+      // Signed-in users should have a cloud-backed short link before preview/testing.
+      if (supabase && user) {
+        let inserted = false;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const { error: insertError } = await supabase.from("short_urls").insert({
+            user_id: user.id,
+            short_code: code,
+            original_url: normalized,
+            template_id: selectedTemplate.id,
+            template_payload: templateValues,
+          });
+
+          if (!insertError) {
+            inserted = true;
+            break;
+          }
+
+          const isUniqueViolation = (insertError as { code?: string }).code === "23505";
+          if (!isUniqueViolation) {
+            throw insertError;
+          }
+
+          code = makeCode();
+          shortUrl = shortUrlForCode(code);
+        }
+
+        if (!inserted) {
+          throw new Error("Could not create a unique short link. Please try again.");
+        }
+      }
 
       const record: ShortUrlRecord = {
         id: makeId(),
@@ -290,13 +322,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setActiveRailStage("compose");
 
       if (supabase && user) {
-        await supabase.from("short_urls").insert({
-          user_id: user.id,
-          short_code: code,
-          original_url: normalized,
-          template_id: selectedTemplate.id,
-          template_payload: templateValues,
-        });
         // Refresh Supabase history to include the new entry
         getUserShortUrls(user.id).then(setSupabaseHistory);
       }

@@ -695,6 +695,34 @@ export async function composeTemplatePreview({
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(qrImage, layout.qrX, layout.qrY, layout.qrSize, layout.qrSize);
     ctx.imageSmoothingEnabled = true;
+
+    const logoUrl = values.frame_logo_url?.trim();
+    if (logoUrl) {
+      try {
+        const logoImage = await loadImage(logoUrl);
+        const logoPad = Math.round(layout.qrSize * 0.03);
+        const logoBox = Math.max(28, Math.round(layout.qrSize * 0.24));
+        const centerX = layout.qrX + layout.qrSize / 2;
+        const centerY = layout.qrY + layout.qrSize / 2;
+        const logoX = Math.round(centerX - logoBox / 2);
+        const logoY = Math.round(centerY - logoBox / 2);
+
+        ctx.fillStyle = "#ffffff";
+        drawRoundedRect(
+          ctx,
+          logoX - logoPad,
+          logoY - logoPad,
+          logoBox + logoPad * 2,
+          logoBox + logoPad * 2,
+          Math.max(6, Math.round(logoBox * 0.18))
+        );
+        ctx.fill();
+
+        ctx.drawImage(logoImage, logoX, logoY, logoBox, logoBox);
+      } catch {
+        // Keep preview/export functional even if the logo URL is stale.
+      }
+    }
   }
 
   if (layout.chipY !== null && layout.ctaLayout) {

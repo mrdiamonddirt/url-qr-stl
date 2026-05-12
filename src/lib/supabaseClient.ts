@@ -1,5 +1,5 @@
 import { createClient, type User } from "@supabase/supabase-js";
-import { PremiumAnalyticsResult, Profile, RecordScanResult, SupabaseShortUrlRow } from "../types";
+import { PremiumAnalyticsResult, Profile, RecordScanResult, SupabaseShortUrlRow, UserLogo } from "../types";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -85,7 +85,7 @@ export async function getUserShortUrls(userId: string): Promise<SupabaseShortUrl
   if (!supabase) return [];
   const { data } = await supabase
     .from("short_urls")
-    .select("id, short_code, original_url, scan_count, created_at")
+    .select("id, short_code, original_url, template_id, template_payload, qr_type, frame_logo_id, scan_count, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -124,7 +124,7 @@ export async function updateProfileRedirectMode(userId: string, redirectMode: "i
   }
 
   if (!data || data.length === 0) {
-    throw new Error("Premium plan required for instant redirect.");
+    throw new Error("Premium plan required for direct link.");
   }
 }
 
@@ -185,4 +185,151 @@ export async function getPremiumScanAnalytics(userId: string, days = 14): Promis
   }
 
   return data as PremiumAnalyticsResult;
+}
+
+const LOGO_BUCKET = "user-logos";
+const LOGO_LIMIT = 5;
+
+function getFileExtension(file: File): string {
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/jpeg") return "jpg";
+  if (file.type === "image/webp") return "webp";
+  const nameParts = file.name.split(".");
+  return (nameParts[nameParts.length - 1] || "bin").toLowerCase();
+}
+
+function toUserLogo(row: Omit<UserLogo, "public_url">): UserLogo {
+  if (!supabase) {
+    return { ...row, public_url: "" };
+  }
+  const { data } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(row.storage_path);
+  return { ...row, public_url: data.publicUrl };
+}
+
+export async function listUserLogos(userId: string): Promise<UserLogo[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("user_logos")
+    .select("id, user_id, storage_path, mime_type, file_size_bytes, width_px, height_px, is_default, is_active, created_at, updated_at")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data as Array<Omit<UserLogo, "public_url">>) ?? []).map(toUserLogo);
+}
+
+export async function uploadUserLogo(
+  userId: string,
+  file: File,
+  dimensions: { width: number; height: number },
+  isDefault = false
+): Promise<UserLogo> {
+  if (!supabase) throw new Error("Supabase not configured.");
+
+  const ext = getFileExtension(file);
+  const objectName = `${userId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+
+  const { error: storageError } = await supabase.storage
+    .from(LOGO_BUCKET)
+    .upload(objectName, file, {
+      contentType: file.type,
+      upsert: false,
+      cacheControl: "3600",
+    });
+
+  if (storageError) {
+    throw storageError;
+  }
+
+  if (isDefault) {
+    await supabase
+      .from("user_logos")
+      .update({ is_default: false })
+      .eq("user_id", userId)
+      .eq("is_active", true);
+  }
+
+  const { data, error } = await supabase
+    .from("user_logos")
+    .insert({
+      user_id: userId,
+      storage_path: objectName,
+      mime_type: file.type,
+      file_size_bytes: file.size,
+      width_px: dimensions.width,
+      height_px: dimensions.height,
+      is_default: isDefault,
+      is_active: true,
+    })
+    .select("id, user_id, storage_path, mime_type, file_size_bytes, width_px, height_px, is_default, is_active, created_at, updated_at")
+    .single();
+
+  if (error || !data) {
+    await supabase.storage.from(LOGO_BUCKET).remove([objectName]);
+    throw error ?? new Error("Could not save logo metadata.");
+  }
+
+  return toUserLogo(data as Omit<UserLogo, "public_url">);
+}
+
+export async function setDefaultUserLogo(userId: string, logoId: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase not configured.");
+
+  const { error: resetError } = await supabase
+    .from("user_logos")
+    .update({ is_default: false })
+    .eq("user_id", userId)
+    .eq("is_active", true);
+
+  if (resetError) {
+    throw resetError;
+  }
+
+  const { error } = await supabase
+    .from("user_logos")
+    .update({ is_default: true })
+    .eq("id", logoId)
+    .eq("user_id", userId)
+    .eq("is_active", true);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteUserLogo(userId: string, logoId: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase not configured.");
+
+  const { data, error: readError } = await supabase
+    .from("user_logos")
+    .select("storage_path")
+    .eq("id", logoId)
+    .eq("user_id", userId)
+    .single();
+
+  if (readError) {
+    throw readError;
+  }
+
+  const storagePath = (data as { storage_path: string }).storage_path;
+  await supabase.storage.from(LOGO_BUCKET).remove([storagePath]);
+
+  const { error } = await supabase
+    .from("user_logos")
+    .update({ is_active: false, is_default: false })
+    .eq("id", logoId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export function getLogoLimit() {
+  return LOGO_LIMIT;
 }

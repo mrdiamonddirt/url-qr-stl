@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, Mesh, MeshNormalMaterial } from "three";
+import { BoxGeometry, BufferGeometry, Group, Material, Mesh, MeshNormalMaterial } from "three";
 import { StlParams } from "../types";
 import { buildQrMatrix } from "./qr";
 
@@ -12,6 +12,12 @@ const TEMPLATE_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
   low: 144,
   medium: 200,
   high: 256,
+};
+
+const TEMPLATE_PREVIEW_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
+  low: 96,
+  medium: 128,
+  high: 160,
 };
 
 const TEMPLATE_EDGE_GUARD_PX = 2;
@@ -37,6 +43,10 @@ type ModelDimensions = {
 type ModelBuildOptions = {
   dimensions?: ModelDimensions;
   baseMask?: GridMask;
+};
+
+type TemplateModelGroupOptions = {
+  mode?: "export" | "preview";
 };
 
 type Run = {
@@ -128,6 +138,20 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
   const moduleHeight = modelHeightMm / mask.height;
   const raisedDepth = Math.max(0.4, params.depthMm * detailScale * 0.7);
   const group = new Group();
+  const material = new MeshNormalMaterial();
+  const geometryCache = new Map<string, BoxGeometry>();
+
+  const getGeometry = (width: number, height: number, depth: number) => {
+    const key = `${width}:${height}:${depth}`;
+    const cached = geometryCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const geometry = new BoxGeometry(width, height, depth);
+    geometryCache.set(key, geometry);
+    return geometry;
+  };
 
   if (params.baseMm > 0) {
     const baseMask = options?.baseMask;
@@ -136,10 +160,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
       for (let y = 0; y < baseMask.height; y += 1) {
         const runs = collectRowRuns(baseMask, y);
         for (const run of runs) {
-          const baseVoxel = new Mesh(
-            new BoxGeometry(moduleWidth * run.length, moduleHeight, params.baseMm),
-            new MeshNormalMaterial()
-          );
+          const baseVoxel = new Mesh(getGeometry(moduleWidth * run.length, moduleHeight, params.baseMm), material);
 
           const xPos =
             -modelWidthMm / 2 +
@@ -151,10 +172,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
         }
       }
     } else {
-      const base = new Mesh(
-        new BoxGeometry(modelWidthMm, modelHeightMm, params.baseMm),
-        new MeshNormalMaterial()
-      );
+      const base = new Mesh(getGeometry(modelWidthMm, modelHeightMm, params.baseMm), material);
       base.position.set(0, 0, params.baseMm / 2);
       group.add(base);
     }
@@ -173,10 +191,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
         continue;
       }
 
-      const module = new Mesh(
-        new BoxGeometry(moduleWidth, moduleHeight, moduleDepth),
-        new MeshNormalMaterial()
-      );
+      const module = new Mesh(getGeometry(moduleWidth, moduleHeight, moduleDepth), material);
 
       const xPos = -modelWidthMm / 2 + moduleWidth * x + moduleWidth / 2;
       const yPos = modelHeightMm / 2 - moduleHeight * y - moduleHeight / 2;
@@ -261,7 +276,7 @@ function removeTinyIslands(mask: GridMask, minArea: number): GridMask {
 }
 
 export function createQrModelGroup(value: string, params: StlParams): Group {
-  const matrix = buildQrMatrix(value);
+  const matrix = buildQrMatrix(value, params.qrType ?? "standard");
   return createModelGroupFromGrid(
     {
       width: matrix.size,
@@ -272,9 +287,13 @@ export function createQrModelGroup(value: string, params: StlParams): Group {
   );
 }
 
-export async function createTemplateModelGroup(imageDataUrl: string, params: StlParams): Promise<Group> {
+export async function createTemplateModelGroup(
+  imageDataUrl: string,
+  params: StlParams,
+  options?: TemplateModelGroupOptions
+): Promise<Group> {
   const image = await loadImage(imageDataUrl);
-  const sampleWidth = TEMPLATE_SAMPLE_WIDTH[params.detail];
+  const sampleWidth = options?.mode === "preview" ? TEMPLATE_PREVIEW_SAMPLE_WIDTH[params.detail] : TEMPLATE_SAMPLE_WIDTH[params.detail];
   const sampleHeight = Math.max(84, Math.round((sampleWidth * image.height) / image.width));
   const canvas = document.createElement("canvas");
   canvas.width = sampleWidth;
@@ -286,7 +305,7 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
   }
 
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = options?.mode === "preview" ? "low" : "high";
   ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
   const pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
   const detailData: boolean[] = new Array(sampleWidth * sampleHeight);
@@ -363,19 +382,33 @@ export async function createTemplateModelGroup(imageDataUrl: string, params: Stl
 }
 
 export function disposeQrModelGroup(group: Group) {
+  const disposedGeometries = new Set<BufferGeometry>();
+  const disposedMaterials = new Set<Material>();
+
   group.traverse((item) => {
     const candidate = item as Mesh;
     if (!candidate.isMesh) {
       return;
     }
 
-    candidate.geometry.dispose();
+    if (!disposedGeometries.has(candidate.geometry)) {
+      candidate.geometry.dispose();
+      disposedGeometries.add(candidate.geometry);
+    }
 
     if (Array.isArray(candidate.material)) {
-      candidate.material.forEach((material) => material.dispose());
+      candidate.material.forEach((material) => {
+        if (!disposedMaterials.has(material)) {
+          material.dispose();
+          disposedMaterials.add(material);
+        }
+      });
       return;
     }
 
-    candidate.material.dispose();
+    if (!disposedMaterials.has(candidate.material)) {
+      candidate.material.dispose();
+      disposedMaterials.add(candidate.material);
+    }
   });
 }

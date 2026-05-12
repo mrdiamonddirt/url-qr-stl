@@ -18,6 +18,7 @@ import { createTemplateModelGroup, disposeQrModelGroup } from "../lib/modelGeome
 type Props = {
   imageDataUrl: string;
   params: StlParams;
+  onLoadingChange?: (isLoading: boolean) => void;
 };
 
 type HomeView = {
@@ -79,7 +80,7 @@ const IconOrbit = () => (
   </svg>
 );
 
-const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
+const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, onLoadingChange }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -138,9 +139,11 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
 
     const width = host.clientWidth || 320;
     const height = host.clientHeight || 420;
+    const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    const maxPixelRatio = isCoarsePointer ? 1.25 : 2;
 
     const renderer = new WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
     renderer.setSize(width, height);
     host.appendChild(renderer.domElement);
 
@@ -152,8 +155,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
     camera.lookAt(0, 0, 0);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    controls.enableDamping = false;
     controls.enablePan = true;
     controls.minDistance = 24;
     controls.maxDistance = 230;
@@ -169,22 +171,21 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
     scene.add(keyLight);
 
     let active = true;
-    let frameId = 0;
     let modelGroup: Group | null = null;
 
-    const renderLoop = () => {
+    const renderScene = () => {
       if (!active) {
         return;
       }
 
-      controls.update();
       renderer.render(scene, camera);
-      frameId = requestAnimationFrame(renderLoop);
     };
 
-    renderLoop();
+    controls.addEventListener("change", renderScene);
+    renderScene();
+    onLoadingChange?.(true);
 
-    void createTemplateModelGroup(imageDataUrl, params)
+    void createTemplateModelGroup(imageDataUrl, params, { mode: "preview" })
       .then((group) => {
         if (!active) {
           disposeQrModelGroup(group);
@@ -212,6 +213,8 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
         controls.minDistance = Math.max(6, fitDistance * 0.42);
         controls.maxDistance = Math.max(controls.minDistance + 10, fitDistance * 4.6);
         controls.update();
+        renderScene();
+        onLoadingChange?.(false);
 
         homeViewRef.current = {
           position: camera.position.clone(),
@@ -220,6 +223,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
       })
       .catch(() => {
         active = false;
+        onLoadingChange?.(false);
       });
 
     const resizeObserver = new ResizeObserver(() => {
@@ -228,14 +232,16 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
       camera.aspect = nextWidth / nextHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(nextWidth, nextHeight);
+      renderScene();
     });
 
     resizeObserver.observe(host);
 
     return () => {
       active = false;
-      cancelAnimationFrame(frameId);
+      onLoadingChange?.(false);
       resizeObserver.disconnect();
+      controls.removeEventListener("change", renderScene);
       controls.dispose();
       if (modelGroup) {
         scene.remove(modelGroup);
@@ -247,7 +253,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params }) => {
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [imageDataUrl, params]);
+  }, [imageDataUrl, onLoadingChange, params]);
 
   return (
     <div className="model-canvas-shell">

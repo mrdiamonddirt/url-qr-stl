@@ -13,6 +13,7 @@ import {
   IonItem,
   IonLabel,
   IonPage,
+  IonSpinner,
   IonText,
   IonToolbar,
   IonToggle,
@@ -23,9 +24,15 @@ import { useHistory } from "react-router";
 import { customAlphabet } from "nanoid";
 import { User } from "@supabase/supabase-js";
 import {
+  addOutline,
   arrowForwardOutline,
+  barChartOutline,
   chevronDownOutline,
+  closeCircleOutline,
+  copyOutline,
+  createOutline,
   diamondOutline,
+  imageOutline,
   logOutOutline,
   openOutline,
   personCircleOutline,
@@ -40,19 +47,25 @@ import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
 import { composeTemplatePreview, composeTemplateSelectorPreview } from "../lib/templatePreview";
 import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../lib/stl";
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
-import { toQrDataUrl } from "../lib/qr";
+import { getQrTypeUnavailableReason, toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
 import {
   createCheckoutSession,
+  deleteUserLogo,
+  getLogoLimit,
   deleteShortUrl,
   getUserShortUrls,
+  listUserLogos,
+  setDefaultUserLogo,
   signOut,
   supabase,
+  uploadUserLogo,
   updateProfileRedirectMode,
 } from "../lib/supabaseClient";
-import { ModelFormat, Profile, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
+import { ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
+import EmojiPicker from 'emoji-picker-react';
 
 const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
 const makeCode = customAlphabet("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz", 7);
@@ -64,6 +77,7 @@ const DEFAULT_STL: StlParams = {
   baseMm: 10,
   detail: "medium",
   invert: false,
+  qrType: "standard",
 };
 
 type Props = {
@@ -77,6 +91,12 @@ const FREE_SCAN_LIMIT = 20;
 const FREE_TAG_LIMIT = 3;
 const PREMIUM_TAG_LIMIT = 20;
 const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
+const LOGO_LIMIT = getLogoLimit();
+const LOGO_MAX_BYTES = 1_048_576;
+const LOGO_MIN_DIM = 64;
+const LOGO_MAX_DIM = 1024;
+const LOGO_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const DEFAULT_FRAME_EMOJI = "🌊";
 const CTA_SIZE_SCALE = 10;
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
@@ -85,6 +105,15 @@ const CTA_FONT_OPTIONS: Record<string, string> = {
   serif: "Serif",
   condensed: "Condensed",
 };
+
+const QR_TYPE_OPTIONS: Array<{ value: QrCodeType; label: string; description: string }> = [
+  { value: "standard", label: "Standard QR", description: "Balanced default for most tags." },
+  { value: "frame", label: "Frame QR", description: "Standard QR with stronger error recovery for centered artwork." },
+  { value: "micro", label: "Micro QR", description: "Compact variant for tiny labels." },
+  { value: "rmqr", label: "rMQR", description: "Rectangular Micro QR for narrow layouts." },
+  { value: "iqr", label: "iQR", description: "High-capacity square or rectangular format." },
+  { value: "sqrc", label: "SQRC", description: "Secure QR with private data segment." },
+];
 
 function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Record<string, string> {
   const defaults = template.fields.reduce<Record<string, string>>((acc, item) => {
@@ -126,10 +155,80 @@ const RAIL_STAGE_INDEX: Record<RailStage, number> = {
   export: 3,
 };
 
+const DEFAULT_TEMPLATE_ID = TEMPLATE_PRESETS[0]?.id ?? "";
+
+async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Could not read image dimensions."));
+      img.src = objectUrl;
+    });
+    return { width: image.naturalWidth, height: image.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function buildSimplifiedEmojiLogoDataUrl(emoji: string): string {
+  try {
+    const canvas = document.createElement("canvas");
+    const size = 160;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return "";
+    }
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `112px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
+    ctx.fillText(emoji, size / 2, size / 2 + 2);
+
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const pixels = imageData.data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const alpha = pixels[i + 3];
+      if (alpha < 20) {
+        pixels[i + 3] = 0;
+        continue;
+      }
+
+      // Flatten to high-contrast monochrome so emoji exports as simple printable geometry.
+      pixels[i] = 16;
+      pixels[i + 1] = 16;
+      pixels[i + 2] = 16;
+      pixels[i + 3] = Math.max(alpha, 220);
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    return canvas.toDataURL("image/png");
+  } catch {
+    return "";
+  }
+}
+
+function extractFirstEmoji(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/u);
+  return match?.[0] ?? null;
+}
+
+
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
   const headerRef = useRef<HTMLElement | null>(null);
   const templateValuesOverrideRef = useRef<Record<string, string> | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const emojiInputRef = useRef<HTMLInputElement | null>(null);
   const [accountPanelOpen, setAccountPanelOpen] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(TEMPLATE_PRESETS[0].id);
@@ -141,6 +240,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
+  const [modelPreviewLoading, setModelPreviewLoading] = useState(false);
   const [modelFormat, setModelFormat] = useState<ModelFormat>("stl");
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
   const [activeRailStage, setActiveRailStage] = useState<RailStage>("import");
@@ -152,6 +252,22 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [error, setError] = useState("");
   const [visibleStatus, setVisibleStatus] = useState("");
   const [visibleError, setVisibleError] = useState("");
+  const [userLogos, setUserLogos] = useState<UserLogo[]>([]);
+  const [selectedLogoId, setSelectedLogoId] = useState<string | null>(null);
+  const [logosLoading, setLogosLoading] = useState(false);
+  const [logoUploadBusy, setLogoUploadBusy] = useState(false);
+  const [logoDeleteBusyId, setLogoDeleteBusyId] = useState<string | null>(null);
+  const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_FRAME_EMOJI);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+
+  const toggleEmojiPicker = () => {
+    setIsEmojiPickerOpen((prev) => !prev);
+  };
+
+  const handleEmojiClick = (emojiData: any) => {
+    setSelectedEmoji(emojiData.emoji);
+    setIsEmojiPickerOpen(false);
+  };
 
   const selectedTemplate = useMemo(
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
@@ -217,6 +333,25 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     );
   }, [recentByUser, tagSearch]);
 
+  const selectedQrTypeOption = useMemo(
+    () => QR_TYPE_OPTIONS.find((option) => option.value === stlParams.qrType) ?? QR_TYPE_OPTIONS[0],
+    [stlParams.qrType]
+  );
+  const isFrameQr = stlParams.qrType === "frame";
+  const defaultLogo = useMemo(() => userLogos.find((logo) => logo.is_default) ?? null, [userLogos]);
+  const selectedLogo = useMemo(() => userLogos.find((logo) => logo.id === selectedLogoId) ?? null, [selectedLogoId, userLogos]);
+  const effectiveLogo = selectedLogo ?? defaultLogo;
+  const simplifiedEmojiLogoDataUrl = useMemo(
+    () => buildSimplifiedEmojiLogoDataUrl(selectedEmoji || DEFAULT_FRAME_EMOJI),
+    [selectedEmoji]
+  );
+  const logoSlotsRemaining = Math.max(0, LOGO_LIMIT - userLogos.length);
+  const frameLogoPreviewUrl = isFrameQr ? effectiveLogo?.public_url ?? simplifiedEmojiLogoDataUrl : "";
+  const selectedQrTypeUnavailableReason = useMemo(
+    () => getQrTypeUnavailableReason(stlParams.qrType),
+    [stlParams.qrType]
+  );
+
   const nextRailStage = useMemo(() => {
     const index = RAIL_STAGE_INDEX[activeRailStage];
     if (index >= RAIL_STAGES.length - 1) {
@@ -243,6 +378,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
+    setModelPreviewLoading(false);
   }, [selectedTemplate]);
 
   useEffect(() => {
@@ -270,6 +406,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     if (!qrDataUrl || !generated) return;
     setActiveRailStage("compose");
     setModelPreviewReady(false);
+    setModelPreviewLoading(false);
     const timeoutId = window.setTimeout(() => {
       (async () => {
         try {
@@ -299,6 +436,53 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setSupabaseHistory([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLogos() {
+      if (!user || !isPremiumPlan) {
+        setUserLogos([]);
+        setSelectedLogoId(null);
+        return;
+      }
+
+      setLogosLoading(true);
+      try {
+        const logos = await listUserLogos(user.id);
+        if (!cancelled) {
+          setUserLogos(logos);
+          if (!logos.some((logo) => logo.id === selectedLogoId)) {
+            setSelectedLogoId(null);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not load logos.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLogosLoading(false);
+        }
+      }
+    }
+
+    void loadLogos();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPremiumPlan, user]);
+
+  useEffect(() => {
+    if (!isFrameQr) {
+      return;
+    }
+    setTemplateValues((prev) => ({
+      ...prev,
+      frame_logo_url: frameLogoPreviewUrl,
+      frame_logo_emoji: selectedEmoji,
+    }));
+  }, [frameLogoPreviewUrl, isFrameQr, selectedEmoji]);
 
   useEffect(() => {
     const headerEl = headerRef.current;
@@ -335,7 +519,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setVisibleStatus(status);
     const timeoutId = window.setTimeout(() => {
       setVisibleStatus("");
-    }, 2400);
+      setStatus("");
+    }, 1800);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -350,7 +535,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setVisibleError(error);
     const timeoutId = window.setTimeout(() => {
       setVisibleError("");
-    }, 3200);
+      setError("");
+    }, 1900);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -366,11 +552,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
     (async () => {
       try {
-        const nextQr = await toQrDataUrl(getQrTargetUrl(generated));
+        const nextQr = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType);
         if (!cancelled) {
           setQrDataUrl(nextQr);
           setComposedPreviewUrl("");
           setModelPreviewReady(false);
+          setModelPreviewLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -382,12 +569,129 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     return () => {
       cancelled = true;
     };
-  }, [generated, getQrTargetUrl]);
+  }, [generated, getQrTargetUrl, stlParams.qrType]);
 
   async function handleDeleteTag(shortCode: string) {
     if (!user) return;
     await deleteShortUrl(shortCode, user.id);
     setSupabaseHistory((prev) => prev.filter((row) => row.short_code !== shortCode));
+  }
+
+  async function handleUploadLogo(file: File) {
+    if (!user || !isPremiumPlan) {
+      setError("Frame logo uploads are premium-only.");
+      return;
+    }
+
+    if (!LOGO_ALLOWED_TYPES.has(file.type)) {
+      setError("Unsupported logo file type. Use PNG, JPG, or WebP.");
+      return;
+    }
+
+    if (file.size > LOGO_MAX_BYTES) {
+      setError("Logo exceeds 1 MB. Please upload a smaller file.");
+      return;
+    }
+
+    if (userLogos.length >= LOGO_LIMIT) {
+      setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+      return;
+    }
+
+    setLogoUploadBusy(true);
+    try {
+      const dimensions = await readImageDimensions(file);
+      if (
+        dimensions.width < LOGO_MIN_DIM ||
+        dimensions.height < LOGO_MIN_DIM ||
+        dimensions.width > LOGO_MAX_DIM ||
+        dimensions.height > LOGO_MAX_DIM
+      ) {
+        setError("Logo dimensions must be between 64px and 1024px.");
+        return;
+      }
+
+      const created = await uploadUserLogo(user.id, file, dimensions, userLogos.length === 0);
+      const nextLogos = [created, ...userLogos];
+      setUserLogos(nextLogos);
+      setSelectedLogoId(created.id);
+      setStatus("Logo uploaded. It is now available for Frame QR tags.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not upload logo.";
+      if (message.includes("logo_limit_exceeded")) {
+        setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+      } else if (message.includes("premium_logo_access_required")) {
+        setError("Frame logo uploads are premium-only.");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setLogoUploadBusy(false);
+    }
+  }
+
+  async function handleDeleteLogo(logoId: string) {
+    if (!user) {
+      return;
+    }
+
+    setLogoDeleteBusyId(logoId);
+    try {
+      await deleteUserLogo(user.id, logoId);
+      setUserLogos((prev) => prev.filter((logo) => logo.id !== logoId));
+      if (selectedLogoId === logoId) {
+        setSelectedLogoId(null);
+      }
+      setStatus("Logo removed from your library.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove logo.");
+    } finally {
+      setLogoDeleteBusyId(null);
+    }
+  }
+
+  async function handleSetDefaultLogo(logoId: string) {
+    if (!user) {
+      return;
+    }
+
+    try {
+      await setDefaultUserLogo(user.id, logoId);
+      setUserLogos((prev) => prev.map((logo) => ({ ...logo, is_default: logo.id === logoId })));
+      setStatus("Default logo updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update default logo.");
+    }
+  }
+
+  function openSystemEmojiPicker() {
+    const input = emojiInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.type = "text"; // Ensure the input type is compatible
+    input.focus();
+    input.select();
+
+    if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === "function") {
+      (input as HTMLInputElement & { showPicker: () => void }).showPicker();
+    } else {
+      alert("Your browser does not support the emoji picker. Please update your browser or use a supported one.");
+    }
+  }
+
+  function handleEmojiInput(value: string) {
+    const extracted = extractFirstEmoji(value);
+    if (!extracted) {
+      if (!value.trim()) {
+        setSelectedEmoji(DEFAULT_FRAME_EMOJI);
+      }
+      return;
+    }
+
+    setSelectedEmoji(extracted);
+    setError("");
   }
 
   async function persistPendingRedirectModeIfNeeded(targetStage: RailStage): Promise<boolean> {
@@ -403,7 +707,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     try {
       await updateProfileRedirectMode(user.id, pendingRedirectMode);
       setSavedRedirectMode(pendingRedirectMode);
-      setStatus(`Redirect mode saved: ${pendingRedirectMode === "instant" ? "Instant" : "Interstitial"}.`);
+      setStatus(`Redirect mode saved: ${pendingRedirectMode === "instant" ? "Direct Link" : "Tracked Redirect"}.`);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not update redirect mode.";
@@ -411,7 +715,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       if (message.toLowerCase().includes("premium")) {
         setSavedRedirectMode("interstitial");
         setPendingRedirectMode("interstitial");
-        setError("Instant redirect requires an active Premium plan. The toggle was reset.");
+        setError("Direct Link requires an active Premium plan. The toggle was reset.");
       } else {
         setError(message);
       }
@@ -448,9 +752,34 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     try {
+      if (selectedQrTypeUnavailableReason) {
+        setError(selectedQrTypeUnavailableReason);
+        return;
+      }
+
+      if (effectiveLogo && !isFrameQr) {
+        setError("Saved logos are only available with Frame QR.");
+        return;
+      }
+
+      if (effectiveLogo && !isPremiumPlan) {
+        setError("Frame logo uploads are premium-only.");
+        return;
+      }
+
+      if (isFrameQr && !isPremiumPlan) {
+        setError("Frame QR is a Premium feature. Upgrade to create tags with centered artwork and enhanced error recovery.");
+        return;
+      }
+
       const normalized = ensureHttpUrl(sourceUrl);
       let code = makeCode();
       let shortUrl = shortUrlForCode(code);
+      const payloadValues = {
+        ...templateValues,
+        frame_logo_url: frameLogoPreviewUrl,
+        frame_logo_emoji: selectedEmoji,
+      };
 
       // Signed-in users should have a cloud-backed short link before preview/testing.
       if (supabase && user) {
@@ -462,7 +791,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             short_code: code,
             original_url: normalized,
             template_id: selectedTemplate.id,
-            template_payload: templateValues,
+            template_payload: payloadValues,
+            qr_type: stlParams.qrType,
+            frame_logo_id: isFrameQr ? effectiveLogo?.id ?? null : null,
           });
 
           if (!insertError) {
@@ -495,7 +826,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         originalUrl: normalized,
         shortUrl,
         templateId: selectedTemplate.id,
-        templateValues,
+        templateValues: payloadValues,
+        qrType: stlParams.qrType,
+        frameLogoId: isFrameQr ? effectiveLogo?.id ?? null : null,
         userId: user?.id,
         createdAt: new Date().toISOString(),
       };
@@ -503,7 +836,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       saveShortUrl(record);
       setGenerated(record);
       setRecentByUser(listShortUrlsByUser(user?.id));
-      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record)));
+      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType));
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
       setIsUrlEditorOpen(false);
@@ -529,6 +862,28 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setSelectedTemplateId(templateId);
   }
 
+  function handleQrTypeChange(nextType: QrCodeType) {
+    const unavailableReason = getQrTypeUnavailableReason(nextType);
+    if (unavailableReason) {
+      setError(unavailableReason);
+      return;
+    }
+    if (nextType === "frame" && !isPremiumPlan) {
+      setError("Frame QR is a Premium feature. Upgrade to use custom logos and enhanced error recovery.");
+      if (window.confirm("Frame QR is a Premium feature. Upgrade now?")) {
+        if (user) {
+          void handleUpgrade();
+        } else {
+          localStorage.setItem("url-qr-stl.return-to", "/editor");
+          history.push("/auth");
+        }
+      }
+      return;
+    }
+    setError("");
+    setStlParams((prev) => ({ ...prev, qrType: nextType }));
+  }
+
   async function restoreFromRecord(record: ShortUrlRecord) {
     setError("");
     setStatus("");
@@ -537,9 +892,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     const defaults = buildTemplateDefaults(template);
 
     templateValuesOverrideRef.current = { ...defaults, ...(record.templateValues ?? {}) };
+    const restoredEmoji = record.templateValues?.frame_logo_emoji;
+    if (restoredEmoji && typeof restoredEmoji === "string") {
+      setSelectedEmoji(restoredEmoji);
+    } else {
+      setSelectedEmoji(DEFAULT_FRAME_EMOJI);
+    }
 
     setSourceUrl(record.originalUrl);
     setGenerated(record);
+    if (record.qrType) {
+      setStlParams((prev) => ({ ...prev, qrType: record.qrType ?? prev.qrType }));
+    }
+    setSelectedLogoId(record.frameLogoId ?? null);
     setSelectedTemplateId(template.id);
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
@@ -547,11 +912,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     await moveToStage("compose");
 
     try {
-      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record)));
+      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType));
       setStatus(`Loaded tag ${record.code}. You can adjust template settings or export.`);
     } catch (err) {
       setQrDataUrl("");
       setError(err instanceof Error ? err.message : "Could not restore QR preview.");
+    }
+
+    if (selectedQrTypeUnavailableReason) {
+      setError(selectedQrTypeUnavailableReason);
+      return;
     }
   }
 
@@ -563,19 +933,28 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     const fallbackTemplate = selectedTemplate;
+    const templateFromRow = row.template_id
+      ? TEMPLATE_PRESETS.find((preset) => preset.id === row.template_id) ?? fallbackTemplate
+      : fallbackTemplate;
+    const valuesFromRow = row.template_payload && typeof row.template_payload === "object"
+      ? row.template_payload
+      : buildTemplateDefaults(templateFromRow);
+
     const fallbackRecord: ShortUrlRecord = {
       id: `supabase-${row.short_code}`,
       code: row.short_code,
       originalUrl: row.original_url,
       shortUrl: shortUrlForCode(row.short_code),
-      templateId: fallbackTemplate.id,
-      templateValues: buildTemplateDefaults(fallbackTemplate),
+      templateId: templateFromRow.id,
+      templateValues: valuesFromRow,
+      qrType: row.qr_type,
+      frameLogoId: row.frame_logo_id,
       userId: user?.id,
       createdAt: row.created_at,
     };
 
     await restoreFromRecord(fallbackRecord);
-    setStatus(`Loaded tag ${row.short_code}. Template details were not available, so current template settings were used.`);
+    setStatus(`Loaded tag ${row.short_code}.`);
   }
 
   function handleGenerateModelPreview(): boolean {
@@ -587,8 +966,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       return false;
     }
 
+    setModelPreviewLoading(true);
     setModelPreviewReady(true);
-    setStatus("Step 3 ready. Rotate preview loaded.");
+    setStatus("Building 3D preview...");
     return true;
   }
 
@@ -685,8 +1065,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
   async function handleRedirectModeToggle(checked: boolean) {
     if (!isPremiumPlan) {
-      setError("Instant redirect is a Premium feature.");
-      if (window.confirm("Instant redirect is a Premium feature. Upgrade now?")) {
+      setError("Direct Link is a Premium feature.");
+      if (window.confirm("Direct Link is a Premium feature. Upgrade now?")) {
         if (user) {
           await handleUpgrade();
         } else {
@@ -710,8 +1090,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setPendingRedirectMode(nextMode);
     setStatus(
       nextMode === "instant"
-        ? "Instant mode preview active. This mode is saved when you move to the next step."
-        : "Interstitial mode preview active. This mode is saved when you move to the next step."
+        ? "Direct Link preview active. This mode is saved when you move to the next step."
+        : "Tracked Redirect preview active. This mode is saved when you move to the next step."
     );
   }
 
@@ -732,7 +1112,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       return;
     }
 
-    if (stage === "export" && !modelPreviewReady) {
+    if ((stage === "render" || stage === "export") && !modelPreviewReady) {
       const previewReady = handleGenerateModelPreview();
       if (!previewReady) {
         return;
@@ -752,12 +1132,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       return;
     }
 
+    if (nextRailStage.key === "compose" && activeRailStage === "import" && DEFAULT_TEMPLATE_ID) {
+      setSelectedTemplateId(DEFAULT_TEMPLATE_ID);
+    }
+
     if (nextRailStage.key === "render" && !composedPreviewUrl) {
       setError("Compose the template + QR preview first.");
       return;
     }
 
-    if (nextRailStage.key === "export" && !modelPreviewReady) {
+    if ((nextRailStage.key === "render" || nextRailStage.key === "export") && !modelPreviewReady) {
       const previewReady = handleGenerateModelPreview();
       if (!previewReady) {
         return;
@@ -766,6 +1150,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
     await moveToStage(nextRailStage.key);
   }
+
+  useEffect(() => {
+    // Automatically open the emoji picker on desktop
+    if (window.innerWidth > 768) { // Example condition for desktop
+      openSystemEmojiPicker();
+    }
+  }, []);
 
   return (
     <IonPage>
@@ -786,14 +1177,23 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               <div className="editor-toolbar__chip-list">
                 <span className="toolbar-chip">QR Tag Studio</span>
               </div>
+              <button
+                type="button"
+                className="toolbar-dashboard-btn"
+                onClick={() => history.push("/settings")}
+                aria-label="Open dashboard"
+              >
+                <IonIcon icon={barChartOutline} />
+                <span>Dashboard</span>
+              </button>
               <div className={`toolbar-redirect-control ${canToggleInstantRedirect ? "" : "is-locked"}`}>
-                <span className="toolbar-redirect-control__label">Instant Redirect</span>
+                <span className="toolbar-redirect-control__label">Direct Link</span>
                 <IonToggle
                   checked={pendingRedirectMode === "instant"}
                   onIonChange={(e) => {
                     void handleRedirectModeToggle(e.detail.checked);
                   }}
-                  aria-label="Instant redirect toggle"
+                  aria-label="Direct link toggle"
                 />
                 <span className="toolbar-redirect-control__state" data-testid="instant-redirect-state">
                   {canToggleInstantRedirect
@@ -842,68 +1242,70 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           </div>
           <div className="account-drawer__scroll-shell">
             <div className="account-drawer__body">
-              <div className="account-drawer__section">
-                <div className="account-stat-card">
-                  <span>Subscription</span>
-                  <strong>{isPremiumPlan ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
-                </div>
-                <div className="account-stat-card">
-                  <span>Active tags</span>
-                  <strong>{supabaseHistory.length} / {tagLimit}</strong>
-                </div>
-                {isPremiumPlan && (
-                  <div className="account-stat-card">
-                    <span>Scans this month</span>
-                    <strong>{monthlyScans.toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} ({monthlyScanPercent}%)</strong>
-                  </div>
-                )}
-                <div className="account-stat-card">
-                  <span>Premium templates</span>
-                  <strong>{isPremiumPlan ? `${premiumTemplatesCount} unlocked` : `${premiumTemplatesCount} locked on free`}</strong>
-                </div>
-                <div className="account-stat-card">
-                  <span>Status</span>
-                  <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
-                </div>
+              <div className="account-stat-card">
+                <span>Subscription</span>
+                <strong>{isPremiumPlan ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
               </div>
-
-              <div className="account-drawer__section account-drawer__links">
-                <button type="button" className="account-link" onClick={() => setAccountPanelOpen(false)}>
-                  <IonIcon icon={personCircleOutline} />
-                  <span>Workspace overview</span>
-                </button>
-                <button type="button" className="account-link" onClick={() => history.push("/terms")}>
-                  <IonIcon icon={openOutline} />
-                  <span>Terms and policies</span>
-                </button>
-                <button type="button" className="account-link" onClick={() => history.push("/settings")}>
-                  <IonIcon icon={settingsOutline} />
-                  <span>Settings and billing</span>
-                </button>
+              <div className="account-stat-card">
+                <span>Active tags</span>
+                <strong>{supabaseHistory.length} / {tagLimit}</strong>
               </div>
+              {isPremiumPlan && (
+                <div className="account-stat-card">
+                  <span>Scans this month</span>
+                  <strong>{monthlyScans.toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} ({monthlyScanPercent}%)</strong>
+                </div>
+              )}
+              <div className="account-stat-card">
+                <span>Premium features</span>
+                <strong>{isPremiumPlan ? `${premiumTemplatesCount} templates + Frame QR` : `${premiumTemplatesCount} templates locked`}</strong>
+              </div>
+              <div className="account-stat-card">
+                <span>Status</span>
+                <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
+              </div>
+            </div>
 
-              <div className="account-drawer__section">
-                {user ? (
-                  <>
-                    {!isPremiumPlan && (
-                      <IonButton expand="block" onClick={handleUpgrade}>
-                        Upgrade to Premium
-                      </IonButton>
-                    )}
-                    <IonButton expand="block" fill="outline" onClick={handleSignOut}>
-                      <IonIcon slot="start" icon={logOutOutline} />
-                      Sign out
+            <div className="account-drawer__section account-drawer__links">
+              <button type="button" className="account-link" onClick={() => setAccountPanelOpen(false)}>
+                <IonIcon icon={personCircleOutline} />
+                <span>Workspace overview</span>
+              </button>
+              <button type="button" className="account-link" onClick={() => history.push("/settings") }>
+                <IonIcon icon={barChartOutline} />
+                <span>Dashboard and logos</span>
+              </button>
+              <button type="button" className="account-link" onClick={() => history.push("/terms")}>
+                <IonIcon icon={openOutline} />
+                <span>Terms and policies</span>
+              </button>
+              <button type="button" className="account-link" onClick={() => history.push("/settings")}>
+                <IonIcon icon={settingsOutline} />
+                <span>Settings and billing</span>
+              </button>
+            </div>
+
+            <div className="account-drawer__section">
+              {user ? (
+                <>
+                  {!isPremiumPlan && (
+                    <IonButton expand="block" onClick={handleUpgrade}>
+                      Upgrade to Premium
                     </IonButton>
-                  </>
-                ) : (
-                  <IonButton expand="block" onClick={() => history.push("/auth")}>
-                    Sign in to your account
+                  )}
+                  <IonButton expand="block" fill="outline" onClick={handleSignOut}>
+                    <IonIcon slot="start" icon={logOutOutline} />
+                    Sign out
                   </IonButton>
-                )}
-                <IonButton expand="block" fill="clear" onClick={() => setAccountPanelOpen(false)}>
-                  Close panel
+                </>
+              ) : (
+                <IonButton expand="block" onClick={() => history.push("/auth")}>
+                  Sign in to your account
                 </IonButton>
-              </div>
+              )}
+              <IonButton expand="block" fill="clear" onClick={() => setAccountPanelOpen(false)}>
+                Close panel
+              </IonButton>
             </div>
           </div>
         </aside>
@@ -954,19 +1356,30 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   <span>{modelFormat.toUpperCase()} export</span>
                 </div>
               </div>
-
-              <div className="sponsor-slot sponsor-slot--hero">
-                <p className="sponsor-slot__label">Studio spotlight</p>
-                <strong>Featured space</strong>
-                <span>Use this rail for launches, seasonal collections, partner highlights, or product updates.</span>
-              </div>
             </div>
           </section>
 
           <div className="workspace-shell">
             <IonCard className="editor-card editor-card--recent">
-              <IonCardHeader>
-                <IonCardTitle>Your recent QR tags</IonCardTitle>
+              <IonCardHeader className="editor-card__recent-header">
+                <div className="editor-card__recent-header-row">
+                  <IonCardTitle>Your recent QR tags</IonCardTitle>
+                  <div className="history-toolbar history-toolbar--header">
+                    <IonItem className="editor-item history-search-item history-search-item--compact">
+                      <IonInput
+                        value={tagSearch}
+                        aria-label="Search tags"
+                        placeholder="Search by code or URL"
+                        onIonInput={(e) => setTagSearch((e.detail.value ?? "").toString())}
+                      />
+                    </IonItem>
+                    <span className="history-count">
+                      {supabaseHistory.length > 0
+                        ? `${filteredSupabaseHistory.length} of ${supabaseHistory.length}`
+                        : `${filteredRecentByUser.length} of ${recentByUser.length}`}
+                    </span>
+                  </div>
+                </div>
               </IonCardHeader>
               <IonCardContent>
                 {user && !isPremiumPlan && (
@@ -980,21 +1393,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     </IonCardContent>
                   </IonCard>
                 )}
-                <div className="history-toolbar">
-                  <IonItem className="editor-item history-search-item">
-                    <IonLabel position="stacked">Search tags</IonLabel>
-                    <IonInput
-                      value={tagSearch}
-                      placeholder="Search by code or URL"
-                      onIonInput={(e) => setTagSearch((e.detail.value ?? "").toString())}
-                    />
-                  </IonItem>
-                  <span className="history-count">
-                    {supabaseHistory.length > 0
-                      ? `${filteredSupabaseHistory.length} of ${supabaseHistory.length}`
-                      : `${filteredRecentByUser.length} of ${recentByUser.length}`}
-                  </span>
-                </div>
                 {supabaseHistory.length > 0 ? (
                   <ul className="history-row">
                     {filteredSupabaseHistory.map((row) => (
@@ -1153,23 +1551,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonCardContent>
               </IonCard>
 
-              <div className="sponsor-slot sponsor-slot--rail">
-                <p className="sponsor-slot__label">Featured panel</p>
-                <strong>Flexible content block</strong>
-                <span>Keep this area free for announcements, seasonal promotions, or partner-led storytelling.</span>
-              </div>
-
-              <div className="inline-promo-strip">
-                <div>
-                  <p className="inline-promo-strip__label">Studio update</p>
-                  <strong>Space for announcements and featured campaigns</strong>
-                  <span>Keep this module available for launches, premium messaging, or curated partner content.</span>
-                </div>
-                <IonButton fill="outline" onClick={user ? handleUpgrade : () => history.push("/auth")}>
-                  {user ? "See premium options" : "Sign in for sync"}
-                </IonButton>
-              </div>
-
               <IonCard className="editor-card editor-card--pricing">
                 <IonCardHeader>
                   <IonCardTitle>Premium Features</IonCardTitle>
@@ -1182,7 +1563,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <span>{FREE_TAG_LIMIT} active tags</span>
                       <span>{FREE_SCAN_LIMIT} scans per tag</span>
                       <span>Template locks enabled</span>
-                      <span>Tap-to-continue redirect</span>
+                      <span>Tracked redirect with auto-open</span>
                     </div>
                     <div className="premium-compare-col premium-compare-col--premium" role="listitem">
                       <p className="premium-compare-col__label">Premium</p>
@@ -1190,7 +1571,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <span>{PREMIUM_TAG_LIMIT} active tags</span>
                       <span>{PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} monthly scans</span>
                       <span>{premiumTemplatesCount} premium templates unlocked</span>
-                      <span>Instant redirect toggle + analytics dashboard</span>
+                      <span>Direct Link toggle + analytics dashboard</span>
                     </div>
                   </div>
                   <div className="premium-analytics-teaser">
@@ -1221,6 +1602,33 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <span className="section-kicker">Preview</span>
                     <span className="section-state section-state--soft">Live</span>
                   </div>
+                  <IonItem className="editor-item qr-type-item">
+                    <IonLabel>QR type</IonLabel>
+                    <IonSelect
+                      value={stlParams.qrType}
+                      onIonChange={(e) => {
+                        const nextType = e.detail.value as QrCodeType;
+                        handleQrTypeChange(nextType);
+                      }}
+                    >
+                      {QR_TYPE_OPTIONS.map((option) => {
+                        const unavailableReason = getQrTypeUnavailableReason(option.value);
+                        const isFrameQrLocked = option.value === "frame" && !isPremiumPlan;
+                        return (
+                          <IonSelectOption key={option.value} value={option.value} disabled={Boolean(unavailableReason) || isFrameQrLocked}>
+                            {option.label}{isFrameQrLocked ? " (Premium)" : ""}
+                          </IonSelectOption>
+                        );
+                      })}
+                    </IonSelect>
+                  </IonItem>
+                  <p className="section-helper qr-type-helper">
+                    {selectedQrTypeUnavailableReason
+                      ? selectedQrTypeUnavailableReason
+                      : stlParams.qrType === "frame" && !isPremiumPlan
+                        ? "Frame QR with custom logos and enhanced error recovery is available on Premium. Micro QR, rMQR, iQR, and SQRC are unavailable in this build."
+                        : `${selectedQrTypeOption.description} Micro QR, rMQR, iQR, and SQRC are unavailable in this build.`}
+                  </p>
 
                   <div className="timeline-rail" aria-label="Preview timeline">
                     <div className="timeline-rail__track" style={{ "--timeline-progress": `${railStageProgress}%` } as CSSProperties} />
@@ -1274,7 +1682,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 Edit URL
                               </button>
                               <span className={`preview-redirect-chip ${pendingRedirectMode === "instant" ? "is-instant" : "is-interstitial"}`}>
-                                {pendingRedirectMode === "instant" ? "Instant redirect" : "Interstitial redirect"}
+                                {pendingRedirectMode === "instant" ? "Direct Link" : "Tracked redirect"}
                               </span>
                               <img src={qrDataUrl} alt="QR preview" />
                             </>
@@ -1307,7 +1715,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             </div>
                           )}
                           {nextRailStage && (
-                            <IonButton className="stage-next-btn stage-next-btn--floating" onClick={() => void handleNextRailStage()}>
+                            <IonButton className="stage-next-btn stage-next-btn--floating stage-next-btn--import" onClick={() => void handleNextRailStage()}>
                               Next: {nextRailStage.label}
                             </IonButton>
                           )}
@@ -1397,7 +1805,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         <p className="stage-label">Render 3D model preview</p>
                         <div className="preview-box model-preview-box">
                           {modelPreviewReady && generated ? (
-                            <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
+                            <>
+                              <ModelPreviewCanvas
+                                imageDataUrl={composedPreviewUrl}
+                                params={stlParams}
+                                onLoadingChange={setModelPreviewLoading}
+                              />
+                              {modelPreviewLoading && (
+                                <div className="model-preview-box__overlay" aria-live="polite" aria-busy="true">
+                                  <IonSpinner name="crescent" className="model-preview-box__spinner" />
+                                  <span>Building 3D preview...</span>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <span>Generate model preview to render your 3D tag.</span>
                           )}
@@ -1420,7 +1840,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         <p className="stage-label">Export final model</p>
                         <div className="preview-box model-preview-box">
                           {modelPreviewReady && generated ? (
-                            <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
+                            <>
+                              <ModelPreviewCanvas
+                                imageDataUrl={composedPreviewUrl}
+                                params={stlParams}
+                                onLoadingChange={setModelPreviewLoading}
+                              />
+                              {modelPreviewLoading && (
+                                <div className="model-preview-box__overlay" aria-live="polite" aria-busy="true">
+                                  <IonSpinner name="crescent" className="model-preview-box__spinner" />
+                                  <span>Building 3D preview...</span>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <span>Complete render to unlock exports.</span>
                           )}
@@ -1595,10 +2027,162 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         <p className="template-empty-note">No text fields for this template. Pick the border style you want and generate the QR.</p>
                       </IonText>
                     )}
+
+                    {isFrameQr && (
+                      <div className="frame-logo-panel">
+                        <div className="frame-logo-panel__head">
+                          <div>
+                            <p className="frame-logo-panel__label">Frame QR logo</p>
+                            <h4>Default emoji logo with optional premium uploads</h4>
+                          </div>
+                          <span className="frame-logo-meter">{selectedEmoji}</span>
+                        </div>
+                        <div className="frame-emoji-row">
+                          <div className="frame-emoji-picker" role="group" aria-label="Default emoji logo selection">
+                            <p className="frame-emoji-picker__title">Default emoji</p>
+                            <p className="frame-emoji-picker__hint">Tap/click the logo preview to open your system emoji picker.</p>
+                            <input
+                              ref={emojiInputRef}
+                              className="frame-emoji-input"
+                              type="text"
+                              value={selectedEmoji}
+                              maxLength={16}
+                              autoComplete="off"
+                              spellCheck={false}
+                              aria-label="Choose default emoji"
+                              onInput={(e) => {
+                                handleEmojiInput((e.target as HTMLInputElement).value);
+                              }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="frame-emoji-preview"
+                            aria-label="Choose emoji"
+                            onClick={toggleEmojiPicker}
+                          >
+                            {frameLogoPreviewUrl ? <img src={frameLogoPreviewUrl} alt={`Emoji logo ${selectedEmoji}`} /> : <span>{selectedEmoji}</span>}
+                            <span className="frame-emoji-preview__edit">
+                              <IonIcon icon={createOutline} />
+                            </span>
+                          </button>
+                          {isEmojiPickerOpen && (
+                            <div className="emoji-picker-container">
+                              <EmojiPicker onEmojiClick={handleEmojiClick} />
+                            </div>
+                          )}
+                        </div>
+                        <p className="frame-logo-hint">This emoji is converted into a simplified monochrome logo. Default is 🌊.</p>
+                        {!isPremiumPlan ? (
+                          <div className="frame-logo-lock">
+                            <IonIcon icon={diamondOutline} />
+                            <p>Custom uploaded logos are premium-only. Emoji logos work for all Frame QR tags.</p>
+                            <IonButton size="small" onClick={handleUpgrade}>Upgrade</IonButton>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="frame-logo-hint">Uploaded logo library: {userLogos.length}/{LOGO_LIMIT}</p>
+                            <div className="frame-logo-actions">
+                              <IonButton
+                                fill="outline"
+                                size="small"
+                                disabled={logoUploadBusy || userLogos.length >= LOGO_LIMIT}
+                                onClick={() => logoInputRef.current?.click()}
+                              >
+                                <IonIcon slot="start" icon={addOutline} />
+                                {logoUploadBusy ? "Uploading..." : "Upload logo"}
+                              </IonButton>
+                              <IonButton
+                                fill="clear"
+                                size="small"
+                                disabled={!selectedLogoId}
+                                onClick={() => setSelectedLogoId(null)}
+                              >
+                                <IonIcon slot="start" icon={closeCircleOutline} />
+                                Use default
+                              </IonButton>
+                            </div>
+                            <input
+                              ref={logoInputRef}
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  void handleUploadLogo(file);
+                                }
+                                e.currentTarget.value = "";
+                              }}
+                            />
+                            <p className="frame-logo-hint">
+                              PNG/JPG/WebP only, max 1 MB, dimensions 64px to 1024px. {logoSlotsRemaining} slots remaining.
+                            </p>
+                            <div className="frame-logo-grid" aria-label="Saved logos">
+                              {logosLoading && <span className="frame-logo-empty">Loading logos...</span>}
+                              {!logosLoading && !userLogos.length && (
+                                <span className="frame-logo-empty">No logos yet. Upload one to start.</span>
+                              )}
+                              {userLogos.map((logo) => {
+                                const isActive = selectedLogoId === logo.id || (!selectedLogoId && logo.is_default);
+                                return (
+                                  <div key={logo.id} className={`frame-logo-item ${isActive ? "is-active" : ""}`}>
+                                    <button
+                                      type="button"
+                                      className="frame-logo-select"
+                                      onClick={() => setSelectedLogoId(logo.id)}
+                                      aria-label="Select logo for this tag"
+                                    >
+                                      <img src={logo.public_url} alt="Saved logo" />
+                                    </button>
+                                    <div className="frame-logo-item__actions">
+                                      <IonButton
+                                        fill="clear"
+                                        size="small"
+                                        disabled={logo.is_default}
+                                        onClick={() => void handleSetDefaultLogo(logo.id)}
+                                      >
+                                        <IonIcon slot="start" icon={imageOutline} />
+                                        {logo.is_default ? "Default" : "Set default"}
+                                      </IonButton>
+                                      <IonButton
+                                        fill="clear"
+                                        color="danger"
+                                        size="small"
+                                        disabled={logoDeleteBusyId === logo.id}
+                                        onClick={() => void handleDeleteLogo(logo.id)}
+                                      >
+                                        <IonIcon slot="start" icon={trashOutline} />
+                                        Remove
+                                      </IonButton>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <IonText>
-                    <p className="short-url-line">{generated?.shortUrl ?? "Generate to create a short URL"}</p>
+                    <p className="short-url-line">
+                      {generated?.shortUrl ?? "Generate to create a short URL"}
+                      {generated?.shortUrl && (
+                        <button
+                          type="button"
+                          className="short-url-copy-btn"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(generated.shortUrl);
+                            setStatus("Short URL copied.");
+                          }}
+                        >
+                          <IonIcon icon={copyOutline} />
+                          Copy
+                        </button>
+                      )}
+                    </p>
                   </IonText>
                 </IonCardContent>
               </IonCard>

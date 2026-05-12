@@ -31,6 +31,8 @@ export type TemplateCtaConfig = {
   chipPaddingX: number;
 };
 
+export type QrCodeType = "standard" | "frame" | "micro" | "rmqr" | "iqr" | "sqrc";
+
 export type QrTemplate = {
   id: string;
   name: string;
@@ -52,6 +54,7 @@ export type StlParams = {
   baseMm: number;
   detail: "low" | "medium" | "high";
   invert: boolean;
+  qrType: QrCodeType;
 };
 
 export type ModelFormat = "stl" | "obj";
@@ -67,6 +70,8 @@ export type ShortUrlRecord = {
   shortUrl: string;
   templateId: string;
   templateValues: Record<string, string>;
+  qrType?: QrCodeType;
+  frameLogoId?: string | null;
   userId?: string;
   createdAt: string;
 };
@@ -95,8 +100,27 @@ export type SupabaseShortUrlRow = {
   id: string;
   short_code: string;
   original_url: string;
+  template_id: string | null;
+  template_payload: Record<string, string> | null;
+  qr_type: QrCodeType;
+  frame_logo_id: string | null;
   scan_count: number;
   created_at: string;
+};
+
+export type UserLogo = {
+  id: string;
+  user_id: string;
+  storage_path: string;
+  mime_type: "image/png" | "image/jpeg" | "image/webp";
+  file_size_bytes: number;
+  width_px: number;
+  height_px: number;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  public_url: string;
 };
 
 export type RedirectMode = "instant" | "interstitial";

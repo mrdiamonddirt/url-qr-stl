@@ -56,7 +56,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
       {
         key: "cta_text",
         label: "Tag text",
-        placeholder: "Type text for this template",
+        placeholder: "Enter custom tag text",
         defaultValue: "SCAN ME",
       },
     ],
@@ -89,7 +89,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
       {
         key: "cta_text",
         label: "Tag text",
-        placeholder: "Type text for this template",
+        placeholder: "Enter custom tag text",
         defaultValue: "OPEN LINK",
       },
     ],
@@ -161,7 +161,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
       {
         key: "cta_text",
         label: "Tag text",
-        placeholder: "Type text for this template",
+        placeholder: "Enter custom tag text",
         defaultValue: "SCAN ME",
       },
     ],
@@ -201,7 +201,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
       {
         key: "cta_text",
         label: "Tag text",
-        placeholder: "Type text for this template",
+        placeholder: "Enter custom tag text",
         defaultValue: "SCAN ME",
       },
     ],

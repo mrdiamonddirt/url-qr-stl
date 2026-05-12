@@ -41,39 +41,39 @@ describe("EditorPage template picker", () => {
     expect(screen.getAllByText("Premium").length).toBeGreaterThanOrEqual(4);
 
     expect(screen.getByText(/No text fields for this template/i)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("Type text for this template")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Enter custom tag text")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Select template Fancy Border" }));
     expect(screen.getByText(/Premium template selected/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Select template Scan Me" }));
 
-    expect((await screen.findAllByPlaceholderText("Type text for this template")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByPlaceholderText("Enter custom tag text")).length).toBeGreaterThan(0);
     expect(screen.getByText(/^Text size \(/i)).toBeInTheDocument();
   });
 
-  test("shows instant redirect as locked for free accounts", () => {
+  test("shows direct link as locked for free accounts", () => {
     renderEditor();
 
-    expect(screen.getByText("Instant Redirect")).toBeInTheDocument();
+    expect(screen.getByText("Direct Link")).toBeInTheDocument();
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Locked");
   });
 
-  test("prompts free users to upgrade when they try instant redirect", async () => {
+  test("prompts free users to upgrade when they try direct link", async () => {
     const user = userEvent.setup();
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     renderEditor();
 
-    await user.click(screen.getByLabelText("Instant redirect toggle"));
+    await user.click(screen.getByLabelText("Direct link toggle"));
 
     expect(confirmSpy).toHaveBeenCalled();
-    expect(screen.getByText("Instant redirect is a Premium feature.")).toBeInTheDocument();
+    expect(screen.getByText("Direct Link is a Premium feature.")).toBeInTheDocument();
 
     confirmSpy.mockRestore();
   });
 
-  test("defaults instant redirect to off for premium accounts", () => {
+  test("defaults direct link to off for premium accounts", () => {
     const premiumProfile: Profile = {
       id: "test-user",
       plan: "premium",
@@ -89,11 +89,11 @@ describe("EditorPage template picker", () => {
     const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
     renderEditor(premiumProfile, premiumUser);
 
-    expect(screen.getByText("Instant Redirect")).toBeInTheDocument();
+    expect(screen.getByText("Direct Link")).toBeInTheDocument();
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Off");
   });
 
-  test("shows pending state when premium instant redirect is toggled", async () => {
+  test("shows pending state when premium direct link is toggled", async () => {
     const user = userEvent.setup();
     const premiumProfile: Profile = {
       id: "test-user",
@@ -110,13 +110,19 @@ describe("EditorPage template picker", () => {
     const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
     renderEditor(premiumProfile, premiumUser);
 
-    await user.click(screen.getByLabelText("Instant redirect toggle"));
+    await user.click(screen.getByLabelText("Direct link toggle"));
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Pending On");
   });
 
   test("renders next button on preview workflow", () => {
     renderEditor();
     expect(screen.getByText("Next: Template Edit")).toBeInTheDocument();
+  });
+
+  test("shows qr type selector and unavailable symbology guidance", () => {
+    renderEditor();
+
+    expect(screen.getByText(/Micro QR, rMQR, iQR, and SQRC are unavailable in this build\./i)).toBeInTheDocument();
   });
 
   test("renders recent tag search and loaded local tags", async () => {
@@ -149,5 +155,54 @@ describe("EditorPage template picker", () => {
     expect(screen.getByPlaceholderText("Search by code or URL")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Load previous tag ABC1234" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Load previous tag ZZZ9876" })).toBeInTheDocument();
+  });
+
+  test("shows Frame QR as locked (Premium) for free users", () => {
+    renderEditor();
+
+    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
+    expect(qrTypeSelect).toBeInTheDocument();
+
+    const frameQrOption = screen.getByRole("option", { name: /Frame QR \(Premium\)/ });
+    expect(frameQrOption).toHaveAttribute("disabled");
+  });
+
+  test("prompts free users to upgrade when they try to select Frame QR", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderEditor();
+
+    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
+    await user.click(qrTypeSelect);
+
+    const frameQrOption = screen.getByRole("option", { name: /Frame QR \(Premium\)/ });
+    expect(frameQrOption).toHaveAttribute("disabled");
+
+    confirmSpy.mockRestore();
+  });
+
+  test("allows premium users to select Frame QR", () => {
+    const premiumProfile: Profile = {
+      id: "test-user",
+      plan: "premium",
+      redirect_mode: "interstitial",
+      stripe_customer_id: null,
+      stripe_subscription_id: null,
+      subscription_ends_at: null,
+      monthly_scans: 0,
+      monthly_reset_at: null,
+      created_at: new Date().toISOString(),
+    };
+
+    const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
+    renderEditor(premiumProfile, premiumUser);
+
+    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
+    expect(qrTypeSelect).toBeInTheDocument();
+
+    const frameQrOption = screen.queryByRole("option", { name: /Frame QR \(Premium\)/ });
+    const standardFrameQrOption = screen.getByRole("option", { name: "Frame QR" });
+    expect(standardFrameQrOption).not.toHaveAttribute("disabled");
   });
 });

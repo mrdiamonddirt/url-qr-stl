@@ -58,6 +58,20 @@ describe("EditorPage template picker", () => {
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Locked");
   });
 
+  test("prompts free users to upgrade when they try instant redirect", async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderEditor();
+
+    await user.click(screen.getByLabelText("Instant redirect toggle"));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByText("Instant redirect is a Premium feature.")).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
   test("defaults instant redirect to off for premium accounts", () => {
     const premiumProfile: Profile = {
       id: "test-user",

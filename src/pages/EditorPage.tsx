@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   IonBadge,
   IonButton,
@@ -150,6 +150,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [tagSearch, setTagSearch] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [visibleStatus, setVisibleStatus] = useState("");
+  const [visibleError, setVisibleError] = useState("");
 
   const selectedTemplate = useMemo(
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
@@ -222,6 +224,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
     return RAIL_STAGES[index + 1];
   }, [activeRailStage]);
+
+  const getQrTargetUrl = useCallback(
+    (record: ShortUrlRecord, mode: RedirectMode = pendingRedirectMode) => {
+      return canToggleInstantRedirect && mode === "instant" ? record.originalUrl : record.shortUrl;
+    },
+    [canToggleInstantRedirect, pendingRedirectMode]
+  );
 
   useEffect(() => {
     const defaults = buildTemplateDefaults(selectedTemplate);
@@ -318,6 +327,63 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!status) {
+      return;
+    }
+
+    setVisibleStatus(status);
+    const timeoutId = window.setTimeout(() => {
+      setVisibleStatus("");
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+
+    setVisibleError(error);
+    const timeoutId = window.setTimeout(() => {
+      setVisibleError("");
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [error]);
+
+  useEffect(() => {
+    if (!generated) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const nextQr = await toQrDataUrl(getQrTargetUrl(generated));
+        if (!cancelled) {
+          setQrDataUrl(nextQr);
+          setComposedPreviewUrl("");
+          setModelPreviewReady(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not update QR preview.");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [generated, getQrTargetUrl]);
+
   async function handleDeleteTag(shortCode: string) {
     if (!user) return;
     await deleteShortUrl(shortCode, user.id);
@@ -340,7 +406,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus(`Redirect mode saved: ${pendingRedirectMode === "instant" ? "Instant" : "Interstitial"}.`);
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update redirect mode.");
+      const message = err instanceof Error ? err.message : "Could not update redirect mode.";
+
+      if (message.toLowerCase().includes("premium")) {
+        setSavedRedirectMode("interstitial");
+        setPendingRedirectMode("interstitial");
+        setError("Instant redirect requires an active Premium plan. The toggle was reset.");
+      } else {
+        setError(message);
+      }
+
       return false;
     }
   }
@@ -428,7 +503,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       saveShortUrl(record);
       setGenerated(record);
       setRecentByUser(listShortUrlsByUser(user?.id));
-      setQrDataUrl(await toQrDataUrl(shortUrl));
+      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record)));
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
       setIsUrlEditorOpen(false);
@@ -472,7 +547,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     await moveToStage("compose");
 
     try {
-      setQrDataUrl(await toQrDataUrl(record.shortUrl));
+      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record)));
       setStatus(`Loaded tag ${record.code}. You can adjust template settings or export.`);
     } catch (err) {
       setQrDataUrl("");
@@ -609,15 +684,35 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }
 
   async function handleRedirectModeToggle(checked: boolean) {
-    if (!user || !isPremiumPlan) {
-      setError("Instant redirect is locked on free accounts.");
+    if (!isPremiumPlan) {
+      setError("Instant redirect is a Premium feature.");
+      if (window.confirm("Instant redirect is a Premium feature. Upgrade now?")) {
+        if (user) {
+          await handleUpgrade();
+        } else {
+          localStorage.setItem("url-qr-stl.return-to", "/editor");
+          history.push("/auth");
+        }
+      }
+      setPendingRedirectMode("interstitial");
+      return;
+    }
+
+    if (!user) {
+      setError("Sign in to manage redirect mode.");
+      localStorage.setItem("url-qr-stl.return-to", "/editor");
+      history.push("/auth");
       return;
     }
 
     const nextMode: RedirectMode = checked ? "instant" : "interstitial";
     setError("");
     setPendingRedirectMode(nextMode);
-    setStatus("Redirect mode will be saved when you move to the next step.");
+    setStatus(
+      nextMode === "instant"
+        ? "Instant mode preview active. This mode is saved when you move to the next step."
+        : "Interstitial mode preview active. This mode is saved when you move to the next step."
+    );
   }
 
   async function handleTimelineStageSelect(stage: RailStage) {
@@ -680,7 +775,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="editor-toolbar__brand">
               <div className="editor-toolbar__mark">U2S</div>
               <div className="editor-toolbar__brand-copy">
-                <div className="editor-toolbar__title">URL 2 STL</div>
+                <div className="editor-toolbar__title-row">
+                  <div className="editor-toolbar__title">URL 2 STL</div>
+                  {isPremiumPlan && <span className="editor-toolbar__pro-pill">Pro</span>}
+                </div>
                 <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
               </div>
             </div>
@@ -692,7 +790,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 <span className="toolbar-redirect-control__label">Instant Redirect</span>
                 <IonToggle
                   checked={pendingRedirectMode === "instant"}
-                  disabled={!canToggleInstantRedirect}
                   onIonChange={(e) => {
                     void handleRedirectModeToggle(e.detail.checked);
                   }}
@@ -713,12 +810,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               )}
               <button
                 type="button"
-                className={`account-trigger ${accountPanelOpen ? "is-open" : ""}`}
+                className={`account-trigger ${accountPanelOpen ? "is-open" : ""} ${isPremiumPlan ? "is-premium" : ""}`}
                 onClick={toggleAccountPanel}
                 aria-label="Open account panel"
                 aria-expanded={accountPanelOpen}
               >
-                <span className="account-trigger__avatar">{accountInitials}</span>
+                <span className="account-trigger__avatar">
+                  {accountInitials}
+                  {isPremiumPlan && <IonIcon icon={sparklesOutline} className="account-trigger__premium-star" aria-hidden="true" />}
+                </span>
                 <span className="account-trigger__copy">
                   <strong>{accountTriggerLabel}</strong>
                   <span>{planLabel} plan</span>
@@ -1150,6 +1250,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   </div>
 
                   <div className="timeline-stage-shell" role="tabpanel">
+                    {(visibleStatus || visibleError) && (
+                      <div className="status-overlay" aria-live="polite" aria-atomic="true">
+                        {visibleStatus && <IonText color="success"><p className="status-line">{visibleStatus}</p></IonText>}
+                        {visibleError && <IonText color="danger"><p className="status-line">{visibleError}</p></IonText>}
+                      </div>
+                    )}
+
                     {activeRailStage === "import" && (
                       <>
                         <p className="stage-label">Import URL and generate QR</p>
@@ -1198,6 +1305,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 The app normalizes your link and regenerates the QR in this panel.
                               </p>
                             </div>
+                          )}
+                          {nextRailStage && (
+                            <IonButton className="stage-next-btn stage-next-btn--floating" onClick={() => void handleNextRailStage()}>
+                              Next: {nextRailStage.label}
+                            </IonButton>
                           )}
                         </div>
                       </>
@@ -1271,6 +1383,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               />
                             </div>
                           )}
+                          {nextRailStage && (
+                            <IonButton className="stage-next-btn stage-next-btn--floating" onClick={() => void handleNextRailStage()}>
+                              Next: {nextRailStage.label}
+                            </IonButton>
+                          )}
                         </div>
                       </>
                     )}
@@ -1283,6 +1400,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             <ModelPreviewCanvas imageDataUrl={composedPreviewUrl} params={stlParams} />
                           ) : (
                             <span>Generate model preview to render your 3D tag.</span>
+                          )}
+                          {nextRailStage && (
+                            <IonButton className="stage-next-btn stage-next-btn--floating" onClick={() => void handleNextRailStage()}>
+                              Next: {nextRailStage.label}
+                            </IonButton>
                           )}
                         </div>
                         {modelPreviewReady && (
@@ -1323,13 +1445,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       </>
                     )}
 
-                    {nextRailStage && (
-                      <div className="stage-next-row">
-                        <IonButton className="stage-next-btn" onClick={() => void handleNextRailStage()}>
-                          Next: {nextRailStage.label}
-                        </IonButton>
-                      </div>
-                    )}
                   </div>
 
                   <div className="preview-template-section">
@@ -1490,12 +1605,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             </aside>
           </div>
         </div>
-        {(status || error) && (
-          <div className="status-overlay" aria-live="polite" aria-atomic="true">
-            {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
-            {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
-          </div>
-        )}
         <AppFooter />
       </IonContent>
     </IonPage>

@@ -104,13 +104,25 @@ export async function updateProfileRedirectMode(userId: string, redirectMode: "i
     return;
   }
 
-  const { error } = await supabase
+  let query = supabase
     .from("profiles")
     .update({ redirect_mode: redirectMode })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id, plan, redirect_mode");
+
+  if (redirectMode === "instant") {
+    // Prevent invalid writes when client plan state is stale.
+    query = query.eq("plan", "premium");
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error("Premium plan required for instant redirect.");
   }
 }
 

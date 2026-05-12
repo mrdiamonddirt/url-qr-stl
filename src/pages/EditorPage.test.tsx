@@ -4,6 +4,7 @@ import { IonApp } from "@ionic/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { User } from "@supabase/supabase-js";
+import { vi } from "vitest";
 import EditorPage from "./EditorPage";
 import { Profile } from "../types";
 

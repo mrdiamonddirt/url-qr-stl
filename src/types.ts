@@ -35,6 +35,7 @@ export type QrTemplate = {
   id: string;
   name: string;
   description: string;
+  premiumOnly?: boolean;
   frameStyle: "rounded" | "sharp" | "circle";
   accentColor: string;
   borderStyle: TemplateBorderStyle;
@@ -81,6 +82,7 @@ export type StlExportRecord = {
 export type Profile = {
   id: string;
   plan: "free" | "premium";
+  redirect_mode?: RedirectMode;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_ends_at: string | null;
@@ -95,4 +97,36 @@ export type SupabaseShortUrlRow = {
   original_url: string;
   scan_count: number;
   created_at: string;
+};
+
+export type RedirectMode = "instant" | "interstitial";
+
+export type RecordScanSuccess = {
+  original_url: string;
+  scan_count: number;
+  monthly_scans?: number;
+  owner_plan?: "free" | "premium";
+  redirect_mode?: RedirectMode;
+};
+
+export type RecordScanResult = RecordScanSuccess | { error: string };
+
+export type PremiumAnalyticsDailyPoint = {
+  day: string;
+  scans: number;
+};
+
+export type PremiumAnalyticsTopTag = {
+  short_code: string;
+  original_url: string;
+  scan_count: number;
+};
+
+export type PremiumAnalyticsResult = {
+  days: number;
+  total_scans_in_window: number;
+  daily_scans: PremiumAnalyticsDailyPoint[];
+  top_tags: PremiumAnalyticsTopTag[];
+} | {
+  error: string;
 };

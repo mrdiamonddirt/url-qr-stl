@@ -603,47 +603,51 @@ export function composeTemplateSelectorPreview(
   template: QrTemplate,
   values?: Record<string, string>
 ): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = SELECTOR_PREVIEW_SIZE;
-  canvas.height = SELECTOR_PREVIEW_SIZE;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = SELECTOR_PREVIEW_SIZE;
+    canvas.height = SELECTOR_PREVIEW_SIZE;
 
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Canvas is unavailable in this browser.");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return "";
+    }
+
+    const resolvedValues = { ...buildDefaultTemplateValues(template), ...(values ?? {}) };
+    const layout = resolveCompositionLayout(ctx, template, resolvedValues, SELECTOR_PREVIEW_SIZE);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
+    strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, resolvedValues);
+    drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, resolvedValues);
+
+    ctx.save();
+    beginFramePath(
+      ctx,
+      template,
+      layout.frameX,
+      layout.frameY,
+      layout.frameSize,
+      layout.frameSize,
+      layout.frameContentInset,
+      layout.scale
+    );
+    ctx.clip();
+
+    if (layout.qrSize > 0) {
+      drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
+    }
+
+    if (layout.chipY !== null && layout.ctaLayout) {
+      drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY);
+    }
+
+    ctx.restore();
+    return canvas.toDataURL("image/png");
+  } catch {
+    return "";
   }
-
-  const resolvedValues = { ...buildDefaultTemplateValues(template), ...(values ?? {}) };
-  const layout = resolveCompositionLayout(ctx, template, resolvedValues, SELECTOR_PREVIEW_SIZE);
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
-  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, resolvedValues);
-  drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, resolvedValues);
-
-  ctx.save();
-  beginFramePath(
-    ctx,
-    template,
-    layout.frameX,
-    layout.frameY,
-    layout.frameSize,
-    layout.frameSize,
-    layout.frameContentInset,
-    layout.scale
-  );
-  ctx.clip();
-
-  if (layout.qrSize > 0) {
-    drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
-  }
-
-  if (layout.chipY !== null && layout.ctaLayout) {
-    drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY);
-  }
-
-  ctx.restore();
-  return canvas.toDataURL("image/png");
 }
 
 export async function composeTemplatePreview({

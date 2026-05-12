@@ -59,14 +59,10 @@ Deno.serve(async (req) => {
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
-    client_reference_id: user.id,
     mode: "subscription",
     line_items: [{ price: Deno.env.get("STRIPE_PRICE_ID")!, quantity: 1 }],
-    success_url: `${origin}/#/editor?upgrade=success`,
-    cancel_url: `${origin}/#/editor`,
-    metadata: {
-      supabase_user_id: user.id,
-    },
+    success_url: `${origin}/editor?upgrade=success`,
+    cancel_url: `${origin}/editor`,
     subscription_data: {
       metadata: { supabase_user_id: user.id },
     },

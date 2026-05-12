@@ -8,6 +8,7 @@ import AuthPage from './pages/AuthPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import RedirectPage from './pages/RedirectPage';
 import TermsPage from './pages/TermsPage';
+import SettingsPage from './pages/SettingsPage';
 import { getCurrentUser, getProfile, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
 import { Profile } from './types';
@@ -44,6 +45,47 @@ import './theme/variables.css';
 setupIonicReact();
 
 const ROUTER_BASENAME = import.meta.env.BASE_URL;
+
+function hasUpgradeSuccessFlag(): boolean {
+  const searchParams = new URLSearchParams(window.location.search);
+  if (searchParams.get("upgrade") === "success") {
+    return true;
+  }
+
+  const hash = window.location.hash ?? "";
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex === -1) {
+    return false;
+  }
+
+  const hashParams = new URLSearchParams(hash.slice(queryIndex + 1));
+  return hashParams.get("upgrade") === "success";
+}
+
+function clearUpgradeSuccessFlag() {
+  const searchParams = new URLSearchParams(window.location.search);
+  if (searchParams.has("upgrade")) {
+    searchParams.delete("upgrade");
+    const search = searchParams.toString();
+    const next = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+    return;
+  }
+
+  const hash = window.location.hash ?? "";
+  const queryIndex = hash.indexOf("?");
+  if (queryIndex === -1) {
+    return;
+  }
+
+  const hashPath = hash.slice(0, queryIndex);
+  const hashParams = new URLSearchParams(hash.slice(queryIndex + 1));
+  hashParams.delete("upgrade");
+  const nextHashQuery = hashParams.toString();
+  const nextHash = `${hashPath}${nextHashQuery ? `?${nextHashQuery}` : ""}`;
+  const next = `${window.location.pathname}${window.location.search}${nextHash}`;
+  window.history.replaceState({}, "", next);
+}
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -86,6 +128,46 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user || !hasUpgradeSuccessFlag()) {
+      return;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 15;
+    let intervalId: number | undefined;
+
+    const refreshProfile = async () => {
+      attempts += 1;
+      const next = await getProfile(user.id);
+      if (cancelled) {
+        return;
+      }
+
+      setProfile(next);
+
+      if (next?.plan === "premium" || attempts >= maxAttempts) {
+        clearUpgradeSuccessFlag();
+        if (intervalId !== undefined) {
+          window.clearInterval(intervalId);
+        }
+      }
+    };
+
+    void refreshProfile();
+    intervalId = window.setInterval(() => {
+      void refreshProfile();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [user]);
+
   return (
     <IonApp>
       <IonReactHashRouter basename={ROUTER_BASENAME}>
@@ -104,6 +186,9 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/terms">
             <TermsPage />
+          </Route>
+          <Route exact path="/settings">
+            <SettingsPage user={user} profile={profile} />
           </Route>
           <Route exact path="/">
             <Redirect to="/editor" />

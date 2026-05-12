@@ -12,6 +12,7 @@ type RouteParams = { code: string };
 const RedirectPage: React.FC = () => {
   const { code } = useParams<RouteParams>();
   const [error, setError] = useState<"not_found" | "limit_reached" | null>(null);
+  const [interstitialUrl, setInterstitialUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,7 +24,13 @@ const RedirectPage: React.FC = () => {
       if (cancelled) return;
 
       if (!("error" in result)) {
-        window.location.replace(result.original_url);
+        const redirectMode = result.redirect_mode ?? "instant";
+        if (redirectMode === "instant") {
+          window.location.replace(result.original_url);
+          return;
+        }
+
+        setInterstitialUrl(result.original_url);
         return;
       }
 
@@ -95,6 +102,32 @@ const RedirectPage: React.FC = () => {
               </IonButton>
               <IonButton expand="block" fill="outline" href={appHomeHref}>
                 Back to URL 2 STL
+              </IonButton>
+            </div>
+          </section>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  if (interstitialUrl) {
+    return (
+      <IonPage>
+        <IonContent className="redirect-not-found">
+          <div className="redirect-not-found__backdrop" />
+          <section className="redirect-not-found__panel ion-padding">
+            <p className="redirect-not-found__eyebrow">Scan Confirmed</p>
+            <h1>This free QR tag opens after one tap.</h1>
+            <p>
+              Instant redirect can be enabled on Premium from the editor toggle. Continue to open the destination link now.
+            </p>
+            <div className="redirect-not-found__actions">
+              <IonButton
+                expand="block"
+                fill="solid"
+                onClick={() => window.location.replace(interstitialUrl)}
+              >
+                Continue to Website
               </IonButton>
             </div>
           </section>

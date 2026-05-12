@@ -22,3 +22,36 @@ if (typeof window.ResizeObserver === 'undefined') {
 
   window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
 }
+
+(HTMLCanvasElement.prototype as any).getContext = function getContext() {
+  return {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    font: '',
+    textAlign: 'center',
+    textBaseline: 'middle',
+    beginPath() {},
+    closePath() {},
+    rect() {},
+    fillRect() {},
+    clearRect() {},
+    moveTo() {},
+    lineTo() {},
+    quadraticCurveTo() {},
+    arc() {},
+    fill() {},
+    stroke() {},
+    save() {},
+    restore() {},
+    clip() {},
+    drawImage() {},
+    fillText() {},
+    strokeText() {},
+    measureText(text: string) {
+      return { width: (text?.length ?? 0) * 8 } as TextMetrics;
+    },
+  } as unknown as CanvasRenderingContext2D;
+};
+
+(HTMLCanvasElement.prototype as any).toDataURL = () => 'data:image/png;base64,mock';

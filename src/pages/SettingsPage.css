@@ -1,0 +1,137 @@
+.settings-shell {
+  --background:
+    radial-gradient(circle at top left, rgba(204, 229, 255, 0.72), transparent 28%),
+    linear-gradient(180deg, #f4f7fb 0%, #edf2f7 100%);
+}
+
+.settings-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 20px 34px;
+  display: grid;
+  gap: 18px;
+}
+
+.settings-back-btn {
+  justify-self: start;
+}
+
+.settings-card {
+  margin: 0;
+  border-radius: 24px;
+  border: 1px solid rgba(20, 45, 70, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 40px rgba(16, 42, 66, 0.08);
+}
+
+.settings-card--hero {
+  background: linear-gradient(145deg, #0d2238 0%, #173b57 55%, #24566d 100%);
+  color: #f7fbff;
+}
+
+.settings-kicker {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(137, 232, 194, 0.92);
+}
+
+.settings-card--hero h1 {
+  margin: 0 0 8px;
+  line-height: 1.1;
+}
+
+.settings-card--hero p {
+  margin: 0;
+  color: rgba(237, 244, 252, 0.88);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-feature-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.settings-feature-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #233a56;
+}
+
+.settings-card--analytics {
+  grid-column: 1 / -1;
+}
+
+.settings-analytics-bars {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.settings-analytics-bars__item {
+  min-width: 36px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.settings-analytics-bars__value {
+  font-size: 0.7rem;
+  color: #4a637d;
+}
+
+.settings-analytics-bars__bar {
+  width: 24px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, #4fa8f8 0%, #6fd7b0 100%);
+  box-shadow: 0 8px 14px rgba(42, 102, 150, 0.24);
+}
+
+.settings-analytics-bars__day {
+  font-size: 0.64rem;
+  color: #60758d;
+  white-space: nowrap;
+}
+
+.settings-top-tags__title {
+  margin: 14px 0 8px;
+}
+
+.settings-top-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.settings-top-tags li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(20, 45, 70, 0.09);
+  background: rgba(244, 248, 252, 0.72);
+}
+
+@media (max-width: 900px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+}

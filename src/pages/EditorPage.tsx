@@ -30,7 +30,9 @@ import {
   openOutline,
   personCircleOutline,
   prismOutline,
+  settingsOutline,
   sparklesOutline,
+  statsChartOutline,
   trashOutline,
 } from "ionicons/icons";
 import { TEMPLATE_PRESETS } from "../constants/templates";
@@ -40,8 +42,15 @@ import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../li
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
-import { createCheckoutSession, deleteShortUrl, getUserShortUrls, signOut, supabase } from "../lib/supabaseClient";
-import { ModelFormat, Profile, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
+import {
+  createCheckoutSession,
+  deleteShortUrl,
+  getUserShortUrls,
+  signOut,
+  supabase,
+  updateProfileRedirectMode,
+} from "../lib/supabaseClient";
+import { ModelFormat, Profile, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
 
@@ -69,7 +78,6 @@ const FREE_TAG_LIMIT = 3;
 const PREMIUM_TAG_LIMIT = 20;
 const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
 const CTA_SIZE_SCALE = 10;
-
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
   impact: "Impact",
@@ -111,6 +119,13 @@ const RAIL_STAGES: Array<{ key: RailStage; label: string; hint: string }> = [
   { key: "export", label: "Export", hint: "Download STL or OBJ" },
 ];
 
+const RAIL_STAGE_INDEX: Record<RailStage, number> = {
+  import: 0,
+  compose: 1,
+  render: 2,
+  export: 3,
+};
+
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
   const headerRef = useRef<HTMLElement | null>(null);
@@ -130,6 +145,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
   const [activeRailStage, setActiveRailStage] = useState<RailStage>("import");
   const [isUrlEditorOpen, setIsUrlEditorOpen] = useState(true);
+  const [savedRedirectMode, setSavedRedirectMode] = useState<RedirectMode>("interstitial");
+  const [pendingRedirectMode, setPendingRedirectMode] = useState<RedirectMode>("interstitial");
+  const [tagSearch, setTagSearch] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -137,6 +155,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
   );
+  const isPremiumPlan = profile?.plan === "premium";
+  const canToggleInstantRedirect = Boolean(user && isPremiumPlan);
+  const hasPendingRedirectSave = canToggleInstantRedirect && pendingRedirectMode !== savedRedirectMode;
+  const tagLimit = isPremiumPlan ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT;
+  const monthlyScans = profile?.monthly_scans ?? 0;
+  const monthlyScanPercent = Math.min(100, Math.round((monthlyScans / PREMIUM_MONTHLY_SCAN_LIMIT) * 100));
+  const premiumTemplatesCount = TEMPLATE_PRESETS.filter((preset) => preset.premiumOnly).length;
 
   const accountEmail = user?.email ?? "Guest";
   const planLabel = profile?.plan === "premium" ? "Premium" : "Free";
@@ -161,6 +186,44 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }, [composedPreviewUrl, modelPreviewReady, qrDataUrl]);
 
   useEffect(() => {
+    if (profile?.redirect_mode === "instant" && isPremiumPlan) {
+      setSavedRedirectMode("instant");
+      setPendingRedirectMode("instant");
+      return;
+    }
+    setSavedRedirectMode("interstitial");
+    setPendingRedirectMode("interstitial");
+  }, [isPremiumPlan, profile?.redirect_mode]);
+
+  const filteredSupabaseHistory = useMemo(() => {
+    const query = tagSearch.trim().toLowerCase();
+    if (!query) {
+      return supabaseHistory;
+    }
+    return supabaseHistory.filter((row) =>
+      row.short_code.toLowerCase().includes(query) || row.original_url.toLowerCase().includes(query)
+    );
+  }, [supabaseHistory, tagSearch]);
+
+  const filteredRecentByUser = useMemo(() => {
+    const query = tagSearch.trim().toLowerCase();
+    if (!query) {
+      return recentByUser;
+    }
+    return recentByUser.filter((record) =>
+      record.code.toLowerCase().includes(query) || record.originalUrl.toLowerCase().includes(query)
+    );
+  }, [recentByUser, tagSearch]);
+
+  const nextRailStage = useMemo(() => {
+    const index = RAIL_STAGE_INDEX[activeRailStage];
+    if (index >= RAIL_STAGES.length - 1) {
+      return null;
+    }
+    return RAIL_STAGES[index + 1];
+  }, [activeRailStage]);
+
+  useEffect(() => {
     const defaults = buildTemplateDefaults(selectedTemplate);
     if (templateValuesOverrideRef.current) {
       const override = templateValuesOverrideRef.current;
@@ -181,6 +244,17 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }, {});
     setTemplateSelectorPreviews(nextPreviews);
   }, [selectedTemplate, templateValues]);
+
+  useEffect(() => {
+    if (isPremiumPlan) {
+      return;
+    }
+    if (selectedTemplate.premiumOnly) {
+      const fallbackTemplate = TEMPLATE_PRESETS.find((preset) => !preset.premiumOnly) ?? TEMPLATE_PRESETS[0];
+      setSelectedTemplateId(fallbackTemplate.id);
+      setError("This template is premium-only. Upgrade to unlock it.");
+    }
+  }, [isPremiumPlan, selectedTemplate, selectedTemplateId]);
 
   // Auto-compose preview when template or text settings change (if QR is already generated)
   useEffect(() => {
@@ -250,14 +324,48 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setSupabaseHistory((prev) => prev.filter((row) => row.short_code !== shortCode));
   }
 
+  async function persistPendingRedirectModeIfNeeded(targetStage: RailStage): Promise<boolean> {
+    if (!user || !hasPendingRedirectSave) {
+      return true;
+    }
+
+    const isForwardMove = RAIL_STAGE_INDEX[targetStage] > RAIL_STAGE_INDEX[activeRailStage];
+    if (!isForwardMove) {
+      return true;
+    }
+
+    try {
+      await updateProfileRedirectMode(user.id, pendingRedirectMode);
+      setSavedRedirectMode(pendingRedirectMode);
+      setStatus(`Redirect mode saved: ${pendingRedirectMode === "instant" ? "Instant" : "Interstitial"}.`);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update redirect mode.");
+      return false;
+    }
+  }
+
+  async function moveToStage(targetStage: RailStage): Promise<boolean> {
+    const ok = await persistPendingRedirectModeIfNeeded(targetStage);
+    if (!ok) {
+      return false;
+    }
+    setActiveRailStage(targetStage);
+    return true;
+  }
+
   async function handleGenerateQr() {
     setError("");
     setStatus("");
 
-    const tagLimit = profile?.plan === "premium" ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT;
+    if (selectedTemplate.premiumOnly && !isPremiumPlan) {
+      setError(`"${selectedTemplate.name}" is a premium template. Upgrade to use it.`);
+      return;
+    }
+
     if (user && supabaseHistory.length >= tagLimit) {
       setError(
-        profile?.plan === "premium"
+        isPremiumPlan
           ? `You have reached the ${PREMIUM_TAG_LIMIT}-tag limit for Premium accounts.`
           : `Free accounts are limited to ${FREE_TAG_LIMIT} active tags. Delete a tag or upgrade to Premium for up to ${PREMIUM_TAG_LIMIT} tags.`
       );
@@ -288,6 +396,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           }
 
           const isUniqueViolation = (insertError as { code?: string }).code === "23505";
+          const insertMessage = (insertError as { message?: string; details?: string }).message ?? "";
+          const insertDetails = (insertError as { details?: string }).details ?? "";
+          if (insertMessage.includes("premium_template_required") || insertMessage.includes("premium_branding_required")) {
+            throw new Error(insertDetails || "This action requires a Premium plan.");
+          }
           if (!isUniqueViolation) {
             throw insertError;
           }
@@ -319,7 +432,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
       setIsUrlEditorOpen(false);
-      setActiveRailStage("compose");
+      await moveToStage("compose");
 
       if (supabase && user) {
         // Refresh Supabase history to include the new entry
@@ -330,6 +443,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate QR.");
     }
+  }
+
+  function handleTemplateSelection(templateId: string, premiumOnly?: boolean) {
+    if (premiumOnly && !isPremiumPlan) {
+      setError("Premium template selected. Upgrade to unlock this style.");
+      return;
+    }
+    setError("");
+    setSelectedTemplateId(templateId);
   }
 
   async function restoreFromRecord(record: ShortUrlRecord) {
@@ -347,7 +469,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
     setIsUrlEditorOpen(false);
-    setActiveRailStage("compose");
+    await moveToStage("compose");
 
     try {
       setQrDataUrl(await toQrDataUrl(record.shortUrl));
@@ -381,18 +503,18 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setStatus(`Loaded tag ${row.short_code}. Template details were not available, so current template settings were used.`);
   }
 
-  function handleGenerateModelPreview() {
+  function handleGenerateModelPreview(): boolean {
     setError("");
     setStatus("");
 
     if (!generated || !composedPreviewUrl) {
       setError("Complete the template + QR preview first.");
-      return;
+      return false;
     }
 
     setModelPreviewReady(true);
-    setActiveRailStage("export");
     setStatus("Step 3 ready. Rotate preview loaded.");
+    return true;
   }
 
   async function handleDownloadModel() {
@@ -460,17 +582,94 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   async function handleUpgrade() {
     try {
       setAccountPanelOpen(false);
-      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-      const origin = `${window.location.origin}${base}`;
+      // For Stripe redirect URLs, always use the actual origin (not BASE_URL subpath)
+      const origin = window.location.origin;
+      console.log("[Upgrade] Starting checkout. Origin:", origin);
+      console.log("[Upgrade] Current user:", user?.id);
+      
       const url = await createCheckoutSession(origin);
+      
+      if (!url) {
+        console.error("[Upgrade] No checkout URL returned");
+        setError("Checkout session creation failed: no URL returned");
+        return;
+      }
+      
+      console.log("[Upgrade] Checkout URL received, redirecting...");
       window.location.href = url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start checkout.");
+      const errorMsg = err instanceof Error ? err.message : "Could not start checkout.";
+      console.error("[Upgrade] Error:", errorMsg, err);
+      setError(errorMsg);
     }
   }
 
   function toggleAccountPanel() {
     setAccountPanelOpen((current) => !current);
+  }
+
+  async function handleRedirectModeToggle(checked: boolean) {
+    if (!user || !isPremiumPlan) {
+      setError("Instant redirect is locked on free accounts.");
+      return;
+    }
+
+    const nextMode: RedirectMode = checked ? "instant" : "interstitial";
+    setError("");
+    setPendingRedirectMode(nextMode);
+    setStatus("Redirect mode will be saved when you move to the next step.");
+  }
+
+  async function handleTimelineStageSelect(stage: RailStage) {
+    setError("");
+
+    if (stage === activeRailStage) {
+      return;
+    }
+
+    if (stage === "compose" && !qrDataUrl) {
+      setError("Generate a QR code first.");
+      return;
+    }
+
+    if (stage === "render" && !composedPreviewUrl) {
+      setError("Compose the template + QR preview first.");
+      return;
+    }
+
+    if (stage === "export" && !modelPreviewReady) {
+      const previewReady = handleGenerateModelPreview();
+      if (!previewReady) {
+        return;
+      }
+    }
+
+    await moveToStage(stage);
+  }
+
+  async function handleNextRailStage() {
+    if (!nextRailStage) {
+      return;
+    }
+
+    if (nextRailStage.key === "compose" && !qrDataUrl) {
+      setError("Generate a QR code first.");
+      return;
+    }
+
+    if (nextRailStage.key === "render" && !composedPreviewUrl) {
+      setError("Compose the template + QR preview first.");
+      return;
+    }
+
+    if (nextRailStage.key === "export" && !modelPreviewReady) {
+      const previewReady = handleGenerateModelPreview();
+      if (!previewReady) {
+        return;
+      }
+    }
+
+    await moveToStage(nextRailStage.key);
   }
 
   return (
@@ -488,6 +687,26 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="editor-toolbar__actions">
               <div className="editor-toolbar__chip-list">
                 <span className="toolbar-chip">QR Tag Studio</span>
+              </div>
+              <div className={`toolbar-redirect-control ${canToggleInstantRedirect ? "" : "is-locked"}`}>
+                <span className="toolbar-redirect-control__label">Instant Redirect</span>
+                <IonToggle
+                  checked={pendingRedirectMode === "instant"}
+                  disabled={!canToggleInstantRedirect}
+                  onIonChange={(e) => {
+                    void handleRedirectModeToggle(e.detail.checked);
+                  }}
+                  aria-label="Instant redirect toggle"
+                />
+                <span className="toolbar-redirect-control__state" data-testid="instant-redirect-state">
+                  {canToggleInstantRedirect
+                    ? hasPendingRedirectSave
+                      ? `Pending ${pendingRedirectMode === "instant" ? "On" : "Off"}`
+                      : pendingRedirectMode === "instant"
+                        ? "On"
+                        : "Off"
+                    : "Locked"}
+                </span>
               </div>
               {user && profile?.plan === "premium" && (
                 <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
@@ -526,18 +745,22 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               <div className="account-drawer__section">
                 <div className="account-stat-card">
                   <span>Subscription</span>
-                  <strong>{profile?.plan === "premium" ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
+                  <strong>{isPremiumPlan ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
                 </div>
                 <div className="account-stat-card">
                   <span>Active tags</span>
-                  <strong>{supabaseHistory.length} / {profile?.plan === "premium" ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT}</strong>
+                  <strong>{supabaseHistory.length} / {tagLimit}</strong>
                 </div>
-                {profile?.plan === "premium" && (
+                {isPremiumPlan && (
                   <div className="account-stat-card">
                     <span>Scans this month</span>
-                    <strong>{(profile.monthly_scans ?? 0).toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()}</strong>
+                    <strong>{monthlyScans.toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} ({monthlyScanPercent}%)</strong>
                   </div>
                 )}
+                <div className="account-stat-card">
+                  <span>Premium templates</span>
+                  <strong>{isPremiumPlan ? `${premiumTemplatesCount} unlocked` : `${premiumTemplatesCount} locked on free`}</strong>
+                </div>
                 <div className="account-stat-card">
                   <span>Status</span>
                   <strong>{user ? "Signed in and ready to export" : "Sign in to download and sync"}</strong>
@@ -553,12 +776,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   <IonIcon icon={openOutline} />
                   <span>Terms and policies</span>
                 </button>
+                <button type="button" className="account-link" onClick={() => history.push("/settings")}>
+                  <IonIcon icon={settingsOutline} />
+                  <span>Settings and billing</span>
+                </button>
               </div>
 
               <div className="account-drawer__section">
                 {user ? (
                   <>
-                    {profile?.plan !== "premium" && (
+                    {!isPremiumPlan && (
                       <IonButton expand="block" onClick={handleUpgrade}>
                         Upgrade to Premium
                       </IonButton>
@@ -642,7 +869,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 <IonCardTitle>Your recent QR tags</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                {user && profile?.plan === "free" && (
+                {user && !isPremiumPlan && (
                   <IonCard color="warning" style={{ marginBottom: 12 }}>
                     <IonCardContent>
                       <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
@@ -653,10 +880,25 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     </IonCardContent>
                   </IonCard>
                 )}
+                <div className="history-toolbar">
+                  <IonItem className="editor-item history-search-item">
+                    <IonLabel position="stacked">Search tags</IonLabel>
+                    <IonInput
+                      value={tagSearch}
+                      placeholder="Search by code or URL"
+                      onIonInput={(e) => setTagSearch((e.detail.value ?? "").toString())}
+                    />
+                  </IonItem>
+                  <span className="history-count">
+                    {supabaseHistory.length > 0
+                      ? `${filteredSupabaseHistory.length} of ${supabaseHistory.length}`
+                      : `${filteredRecentByUser.length} of ${recentByUser.length}`}
+                  </span>
+                </div>
                 {supabaseHistory.length > 0 ? (
-                  <ul className="history-list">
-                    {supabaseHistory.map((row) => (
-                      <li key={row.short_code}>
+                  <ul className="history-row">
+                    {filteredSupabaseHistory.map((row) => (
+                      <li key={row.short_code} className="history-card">
                         <button
                           type="button"
                           className="history-select-btn"
@@ -668,9 +910,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           <strong>{row.short_code}</strong>
                           <span>{row.original_url}</span>
                           <IonBadge
-                            color={row.scan_count >= FREE_SCAN_LIMIT && profile?.plan !== "premium" ? "danger" : "medium"}
+                            color={row.scan_count >= FREE_SCAN_LIMIT && !isPremiumPlan ? "danger" : "medium"}
                           >
-                            {row.scan_count}/{profile?.plan === "premium" ? "∞" : FREE_SCAN_LIMIT} scans
+                            {row.scan_count}/{isPremiumPlan ? "∞" : FREE_SCAN_LIMIT} scans
                           </IonBadge>
                         </button>
                         {user && (
@@ -690,11 +932,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         )}
                       </li>
                     ))}
+                    {!filteredSupabaseHistory.length && <li className="history-empty">No matching tags found.</li>}
                   </ul>
                 ) : (
-                  <ul className="history-list">
-                    {recentByUser.slice(0, 5).map((record) => (
-                      <li key={record.id}>
+                  <ul className="history-row">
+                    {filteredRecentByUser.slice(0, 10).map((record) => (
+                      <li key={record.id} className="history-card">
                         <button
                           type="button"
                           className="history-select-btn"
@@ -708,7 +951,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         </button>
                       </li>
                     ))}
-                    {!recentByUser.length && <li>No tags generated yet.</li>}
+                    {!recentByUser.length && <li className="history-empty">No tags generated yet.</li>}
+                    {!filteredRecentByUser.length && recentByUser.length > 0 && (
+                      <li className="history-empty">No matching tags found.</li>
+                    )}
                   </ul>
                 )}
               </IonCardContent>
@@ -824,8 +1070,48 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 </IonButton>
               </div>
 
-              {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
-              {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
+              <IonCard className="editor-card editor-card--pricing">
+                <IonCardHeader>
+                  <IonCardTitle>Premium Features</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <div className="premium-compare-grid" role="list" aria-label="Free vs premium features">
+                    <div className="premium-compare-col" role="listitem">
+                      <p className="premium-compare-col__label">Free</p>
+                      <strong>Starter limits</strong>
+                      <span>{FREE_TAG_LIMIT} active tags</span>
+                      <span>{FREE_SCAN_LIMIT} scans per tag</span>
+                      <span>Template locks enabled</span>
+                      <span>Tap-to-continue redirect</span>
+                    </div>
+                    <div className="premium-compare-col premium-compare-col--premium" role="listitem">
+                      <p className="premium-compare-col__label">Premium</p>
+                      <strong>Production mode</strong>
+                      <span>{PREMIUM_TAG_LIMIT} active tags</span>
+                      <span>{PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} monthly scans</span>
+                      <span>{premiumTemplatesCount} premium templates unlocked</span>
+                      <span>Instant redirect toggle + analytics dashboard</span>
+                    </div>
+                  </div>
+                  <div className="premium-analytics-teaser">
+                    <IonIcon icon={statsChartOutline} />
+                    <div>
+                      <strong>{isPremiumPlan ? "Premium analytics live" : "Premium analytics preview"}</strong>
+                      <span>
+                        {isPremiumPlan
+                          ? `Current usage: ${monthlyScans.toLocaleString()} of ${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans this cycle.`
+                          : "Upgrade to unlock monthly scan tracking, premium template performance, and redirect conversion visibility."}
+                      </span>
+                    </div>
+                  </div>
+                  {!isPremiumPlan && (
+                    <IonButton expand="block" onClick={handleUpgrade}>
+                      Upgrade to Premium
+                    </IonButton>
+                  )}
+                </IonCardContent>
+              </IonCard>
+
             </main>
 
             <aside className="workspace-rail">
@@ -849,10 +1135,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             aria-selected={isActive}
                             className={`timeline-tab ${isActive ? "is-active" : ""}`}
                             onClick={() => {
-                              setActiveRailStage(stage.key);
-                              if (stage.key === "render" && composedPreviewUrl && generated) {
-                                handleGenerateModelPreview();
-                              }
+                              void handleTimelineStageSelect(stage.key);
                             }}
                           >
                             <span className="timeline-tab__index">{index + 1}</span>
@@ -877,12 +1160,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 type="button"
                                 className="preview-corner-edit"
                                 onClick={() => {
-                                  setActiveRailStage("import");
+                                  void moveToStage("import");
                                   setIsUrlEditorOpen(true);
                                 }}
                               >
                                 Edit URL
                               </button>
+                              <span className={`preview-redirect-chip ${pendingRedirectMode === "instant" ? "is-instant" : "is-interstitial"}`}>
+                                {pendingRedirectMode === "instant" ? "Instant redirect" : "Interstitial redirect"}
+                              </span>
                               <img src={qrDataUrl} alt="QR preview" />
                             </>
                           ) : (
@@ -1036,6 +1322,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                         </IonButton>
                       </>
                     )}
+
+                    {nextRailStage && (
+                      <div className="stage-next-row">
+                        <IonButton className="stage-next-btn" onClick={() => void handleNextRailStage()}>
+                          Next: {nextRailStage.label}
+                        </IonButton>
+                      </div>
+                    )}
                   </div>
 
                   <div className="preview-template-section">
@@ -1050,18 +1344,20 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <div className="template-scroll-row" role="list" aria-label="Template options">
                       {TEMPLATE_PRESETS.map((preset) => {
                         const isActive = preset.id === selectedTemplateId;
+                        const isLocked = Boolean(preset.premiumOnly && !isPremiumPlan);
                         return (
                           <div key={preset.id} className="template-option" role="listitem">
                             <button
                               type="button"
-                              className={`template-button ${isActive ? "is-active" : ""}`}
+                              className={`template-button ${isActive ? "is-active" : ""} ${isLocked ? "is-locked" : ""}`}
                               style={{
                                 borderColor: isActive ? preset.accentColor : "#c7d1dd",
                                 background: isActive ? "#f8fbff" : "#ffffff",
                               }}
-                              onClick={() => setSelectedTemplateId(preset.id)}
+                              onClick={() => handleTemplateSelection(preset.id, preset.premiumOnly)}
                               aria-label={`Select template ${preset.name}`}
                             >
+                              {preset.premiumOnly && <span className="template-lock-badge">Premium</span>}
                               <div
                                 className={`template-card-preview template-card-preview--${preset.borderStyle} template-card-preview--${preset.frameStyle}`}
                                 style={{ borderColor: preset.accentColor, color: preset.accentColor }}
@@ -1194,6 +1490,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             </aside>
           </div>
         </div>
+        {(status || error) && (
+          <div className="status-overlay" aria-live="polite" aria-atomic="true">
+            {status && <IonText color="success"><p className="status-line">{status}</p></IonText>}
+            {error && <IonText color="danger"><p className="status-line">{error}</p></IonText>}
+          </div>
+        )}
         <AppFooter />
       </IonContent>
     </IonPage>

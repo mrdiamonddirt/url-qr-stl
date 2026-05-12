@@ -14,6 +14,7 @@ export const supabase =
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
+          flowType: 'pkce',
         },
       })
     : null;
@@ -30,9 +31,10 @@ export async function signInWithGoogle() {
     throw new Error("Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
   }
 
-  // For hash-based routing (Ionic), use the hash-based callback URL
-  // OAuth redirect must use the actual origin, NOT BASE_URL (which includes GitHub Pages subpath)
-  const redirectTo = `${window.location.origin}/#/auth/callback`;
+  // Use PKCE flow: Supabase appends ?code= (not #fragment), so use path-based redirect.
+  // BASE_URL is '/url-qr-stl/' in prod, '/' in dev — gives correct full path.
+  const base = import.meta.env.BASE_URL ?? '/';
+  const redirectTo = `${window.location.origin}${base}auth/callback`;
   console.log("[signInWithGoogle] Constructed redirect URL:", redirectTo);
   
   localStorage.setItem("url-qr-stl.return-to", "/editor");

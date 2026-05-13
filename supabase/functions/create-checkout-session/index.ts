@@ -183,11 +183,18 @@ Deno.serve(async (req) => {
     let discountCouponId: string | undefined;
 
     if (upgradeCreditCents > 0) {
+      // Create a short plan identifier for the coupon name (Stripe enforces 40 char max)
+      const planAbbrev = (plan: string) => {
+        if (plan === "premium_monthly") return "pm";
+        if (plan === "premium_yearly") return "py";
+        if (plan === "lifetime") return "lt";
+        return plan.substring(0, 2);
+      };
       const coupon = await stripe.coupons.create({
         amount_off: upgradeCreditCents,
         currency: "gbp",
         duration: "once",
-        name: `Upgrade credit ${sourcePlan} -> ${requestedPlan}`,
+        name: `UC-${planAbbrev(sourcePlan)}-${planAbbrev(requestedPlan)}`,
         metadata: {
           source_plan: sourcePlan,
           target_plan: requestedPlan,

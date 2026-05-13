@@ -66,6 +66,7 @@ import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits
 import { CheckoutTargetPlan, ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
+
 import EmojiPicker from 'emoji-picker-react';
 
 const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
@@ -160,6 +161,8 @@ function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Rec
     return acc;
   }, {});
 
+  defaults.template_color = template.accentColor;
+
   if (template.ctaConfig) {
     defaults[template.ctaConfig.fieldKey] = defaults[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";
     defaults[template.ctaConfig.sizeKey] = String(template.ctaConfig.defaultSizePx * CTA_SIZE_SCALE);
@@ -225,25 +228,18 @@ function buildSimplifiedEmojiLogoDataUrl(emoji: string): string {
     ctx.clearRect(0, 0, size, size);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `112px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
-    ctx.fillText(emoji, size / 2, size / 2 + 2);
 
-    const imageData = ctx.getImageData(0, 0, size, size);
-    const pixels = imageData.data;
-    for (let i = 0; i < pixels.length; i += 4) {
-      const alpha = pixels[i + 3];
-      if (alpha < 20) {
-        pixels[i + 3] = 0;
-        continue;
-      }
+    // Use a font that supports outlined emoji glyphs
+    ctx.font = `112px 'Arial', 'Noto Sans', 'sans-serif'`;
 
-      // Flatten to high-contrast monochrome so emoji exports as simple printable geometry.
-      pixels[i] = 16;
-      pixels[i + 1] = 16;
-      pixels[i + 2] = 16;
-      pixels[i + 3] = Math.max(alpha, 220);
-    }
-    ctx.putImageData(imageData, 0, 0);
+    // Add a black outline
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = "black";
+    ctx.strokeText(emoji, size / 2, size / 2);
+
+    // Fill the emoji with white color
+    ctx.fillStyle = "white";
+    ctx.fillText(emoji, size / 2, size / 2);
 
     return canvas.toDataURL("image/png");
   } catch {
@@ -322,6 +318,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
   );
+  const templateForegroundColor = (templateValues.template_color ?? selectedTemplate.accentColor).toUpperCase();
   const currentPlan = profile?.plan ?? "free";
   const isPremiumPlan = isPaidPlan(currentPlan);
   const planLimits = getPlanLimits(currentPlan);
@@ -1180,6 +1177,61 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save QR PNG.");
     }
+  }
+
+  async function handleSaveTemplatePng() {
+    setError("");
+    setStatus("");
+
+    if (!composedPreviewUrl || !generated) {
+      setError("Compose the template + QR preview first.");
+      return;
+    }
+
+    if (!isPremiumPlan) {
+      setError("Saving template PNG is a Premium feature.");
+      if (window.confirm("Saving template PNG is a Premium feature. Upgrade now?")) {
+        if (user) {
+          await handleUpgrade();
+        } else {
+          localStorage.setItem("url-qr-stl.return-to", "/editor");
+          history.push("/auth");
+        }
+      }
+      return;
+    }
+
+    try {
+      const link = document.createElement("a");
+      link.href = composedPreviewUrl;
+      link.download = `template-${generated.code}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setStatus("Template PNG saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save template PNG.");
+    }
+  }
+
+  async function handleTemplateColorChange(nextColor: string) {
+    if (!isPremiumPlan) {
+      setError("Custom template color is a Premium feature.");
+      if (window.confirm("Custom template color is a Premium feature. Upgrade now?")) {
+        if (user) {
+          await handleUpgrade();
+        } else {
+          localStorage.setItem("url-qr-stl.return-to", "/editor");
+          history.push("/auth");
+        }
+      }
+      return;
+    }
+
+    setTemplateValues((prev) => ({
+      ...prev,
+      template_color: nextColor,
+    }));
   }
 
   async function handleSignOut() {
@@ -2102,6 +2154,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             </IonButton>
                           )}
                         </div>
+                        {composedPreviewUrl && (
+                          <IonButton
+                            className="import-save-btn"
+                            fill={isPremiumPlan ? "outline" : "clear"}
+                            onClick={() => void handleSaveTemplatePng()}
+                          >
+                            <IonIcon slot="start" icon={imageOutline} />
+                            {isPremiumPlan ? "Save Template PNG" : "Save Template PNG (Premium)"}
+                          </IonButton>
+                        )}
                       </>
                     )}
 
@@ -2331,6 +2393,27 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <IonText color="medium">
                         <p className="template-empty-note">No text fields for this template. Pick the border style you want and generate the QR.</p>
                       </IonText>
+                    )}
+
+                    <label
+                      className={`import-color-picker ${isPremiumPlan ? "" : "import-color-picker--locked"}`}
+                      htmlFor="template-color-input"
+                      title={isPremiumPlan ? "" : "Premium required to customize template color."}
+                    >
+                      <span>{isPremiumPlan ? "Template color" : "Template color (Premium)"}</span>
+                      <input
+                        id="template-color-input"
+                        type="color"
+                        value={templateValues.template_color ?? selectedTemplate.accentColor}
+                        onChange={(e) => {
+                          void handleTemplateColorChange(e.target.value);
+                        }}
+                        aria-label="Pick template color"
+                      />
+                      <strong>{templateForegroundColor}</strong>
+                    </label>
+                    {!isPremiumPlan && (
+                      <p className="template-color-lock-hint">Upgrade to unlock custom template color controls.</p>
                     )}
 
                     {isFrameQr && (

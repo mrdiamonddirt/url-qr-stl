@@ -131,6 +131,17 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function resolveTemplateAccentColor(template: QrTemplate, values?: Record<string, string>): string {
+  const raw = values?.template_color?.trim();
+  if (!raw) {
+    return template.accentColor;
+  }
+
+  const normalized = raw.toLowerCase();
+  const isHex = /^#[0-9a-f]{6}$/i.test(normalized) || /^#[0-9a-f]{3}$/i.test(normalized);
+  return isHex ? normalized : template.accentColor;
+}
+
 function beginFramePath(
   ctx: CanvasRenderingContext2D,
   template: QrTemplate,
@@ -211,7 +222,7 @@ function strokeFrame(
     return;
   }
 
-  ctx.strokeStyle = template.accentColor;
+  ctx.strokeStyle = resolveTemplateAccentColor(template, values);
   ctx.lineWidth = getFrameStrokeWidth(template, scale, values);
   const outerInset = ctx.lineWidth / 2;
 
@@ -244,7 +255,7 @@ function drawTopLoop(
   const stemTop = frameY - stemHeight;
   const loopCenterY = stemTop - lift;
 
-  ctx.fillStyle = template.accentColor;
+  ctx.fillStyle = resolveTemplateAccentColor(template, values);
   drawRoundedRect(
     ctx,
     centerX - stemWidth / 2,
@@ -465,6 +476,8 @@ function buildDefaultTemplateValues(template: QrTemplate): Record<string, string
     acc[field.key] = field.defaultValue;
     return acc;
   }, {});
+
+  values.template_color = template.accentColor;
 
   if (template.ctaConfig) {
     values[template.ctaConfig.fieldKey] = values[template.ctaConfig.fieldKey] ?? template.ctaLabel ?? "";

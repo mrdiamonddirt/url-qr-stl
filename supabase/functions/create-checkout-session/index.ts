@@ -55,6 +55,60 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function requireEnv(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function requireSecretKey(name: string): string {
+  const value = requireEnv(name);
+  if (value.startsWith("pk_")) {
+    throw new Error(`${name} is set to a publishable key. Replace it with an sk_ secret key in Supabase secrets.`);
+  }
+  return value;
+}
+
+async function getOrCreateStripeCustomer(
+  stripe: Stripe,
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  email: string | undefined,
+  customerId: string | undefined,
+): Promise<string> {
+  if (customerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(customerId);
+      if (!("deleted" in existingCustomer) || !existingCustomer.deleted) {
+        return customerId;
+      }
+    } catch (error) {
+      const stripeError = error as { code?: string; message?: string };
+      if (stripeError.code !== "resource_missing" && !/No such customer/i.test(stripeError.message ?? "")) {
+        throw error;
+      }
+      console.warn("[create-checkout-session] Stored Stripe customer is missing, recreating:", customerId);
+    }
+  }
+
+  const newCustomer = await stripe.customers.create({ email });
+  await supabase
+    .from("profiles")
+    .update({ stripe_customer_id: newCustomer.id })
+    .eq("id", userId);
+
+  return newCustomer.id;
+}
+
 function normalizeBasePath(basePath: string | undefined): string {
   if (!basePath || basePath === "/") {
     return "";
@@ -64,112 +118,114 @@ function normalizeBasePath(basePath: string | undefined): string {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  try {
+    if (req.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-  }
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
+    const supabase = createClient(
+      requireEnv("SUPABASE_URL"),
+      requireEnv("SUPABASE_ANON_KEY"),
+      { global: { headers: { Authorization: authHeader } } },
+    );
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-  }
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
 
-  const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-    apiVersion: "2024-04-10",
-  });
+    const stripe = new Stripe(requireSecretKey("STRIPE_SECRET_KEY"), {
+      apiVersion: "2024-04-10",
+    });
 
-  // Look up or create Stripe customer
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("stripe_customer_id, plan")
-    .eq("id", user.id)
-    .single();
-
-  let customerId = profile?.stripe_customer_id as string | undefined;
-  const sourcePlan = normalizeSourcePlan(profile?.plan);
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({ email: user.email! });
-    customerId = customer.id;
-    await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .update({ stripe_customer_id: customerId })
-      .eq("id", user.id);
-  }
+      .select("stripe_customer_id, plan")
+      .eq("id", user.id)
+      .single();
 
-  const { origin, targetPlan, basePath } = await req.json() as {
-    origin: string;
-    targetPlan?: CheckoutTargetPlan;
-    basePath?: string;
-  };
-  const appBaseUrl = `${origin}${normalizeBasePath(basePath)}`;
+    if (profileError) {
+      console.error("[create-checkout-session] Failed to load profile:", profileError);
+    }
 
-  const requestedPlan: CheckoutTargetPlan = targetPlan ?? "premium_monthly";
-  if (!PRICE_IDS[requestedPlan]) {
-    return new Response(JSON.stringify({ error: `Missing Stripe price for ${requestedPlan}.` }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const sourcePlan = normalizeSourcePlan(profile?.plan);
+    const customerId = await getOrCreateStripeCustomer(
+      stripe,
+      supabase,
+      user.id,
+      user.email ?? undefined,
+      profile?.stripe_customer_id as string | undefined,
+    );
+
+    const { origin, targetPlan, basePath } = await req.json() as {
+      origin: string;
+      targetPlan?: CheckoutTargetPlan;
+      basePath?: string;
+    };
+    const appBaseUrl = `${origin}${normalizeBasePath(basePath)}`;
+
+    const requestedPlan: CheckoutTargetPlan = targetPlan ?? "premium_monthly";
+    if (!PRICE_IDS[requestedPlan]) {
+      return jsonResponse({ error: `Missing Stripe price for ${requestedPlan}.` }, 500);
+    }
+
+    const allowedTargets = getAllowedUpgradeTargets(sourcePlan);
+    if (!allowedTargets.includes(requestedPlan)) {
+      return jsonResponse({ error: "Selected plan is not a valid upgrade target." }, 400);
+    }
+
+    const upgradeCreditCents = getFixedUpgradeCreditCents(sourcePlan, requestedPlan);
+    let discountCouponId: string | undefined;
+
+    if (upgradeCreditCents > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: upgradeCreditCents,
+        currency: "gbp",
+        duration: "once",
+        name: `Upgrade credit ${sourcePlan} -> ${requestedPlan}`,
+        metadata: {
+          source_plan: sourcePlan,
+          target_plan: requestedPlan,
+          user_id: user.id,
+        },
+      });
+      discountCouponId = coupon.id;
+    }
+
+    const metadata = {
+      supabase_user_id: user.id,
+      source_plan: sourcePlan,
+      target_plan: requestedPlan,
+      upgrade_credit_cents: String(upgradeCreditCents),
+    };
+
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      client_reference_id: user.id,
+      mode: PLAN_BILLING_MODE[requestedPlan],
+      line_items: [{ price: PRICE_IDS[requestedPlan], quantity: 1 }],
+      success_url: `${appBaseUrl}/#/editor?upgrade=success`,
+      cancel_url: `${appBaseUrl}/#/editor`,
+      metadata,
+      discounts: discountCouponId ? [{ coupon: discountCouponId }] : undefined,
+      subscription_data: PLAN_BILLING_MODE[requestedPlan] === "subscription"
+        ? { metadata }
+        : undefined,
     });
-  }
 
-  const allowedTargets = getAllowedUpgradeTargets(sourcePlan);
-  if (!allowedTargets.includes(requestedPlan)) {
-    return new Response(JSON.stringify({ error: "Selected plan is not a valid upgrade target." }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const upgradeCreditCents = getFixedUpgradeCreditCents(sourcePlan, requestedPlan);
-  let discountCouponId: string | undefined;
-
-  if (upgradeCreditCents > 0) {
-    const coupon = await stripe.coupons.create({
-      amount_off: upgradeCreditCents,
-      currency: "gbp",
-      duration: "once",
-      name: `Upgrade credit ${sourcePlan} -> ${requestedPlan}`,
-      metadata: {
-        source_plan: sourcePlan,
-        target_plan: requestedPlan,
-        user_id: user.id,
+    return jsonResponse({ url: session.url });
+  } catch (error) {
+    console.error("[create-checkout-session] Unhandled error:", error);
+    return jsonResponse(
+      {
+        error: error instanceof Error ? error.message : "Failed to create checkout session.",
       },
-    });
-    discountCouponId = coupon.id;
+      500,
+    );
   }
-
-  const metadata = {
-    supabase_user_id: user.id,
-    source_plan: sourcePlan,
-    target_plan: requestedPlan,
-    upgrade_credit_cents: String(upgradeCreditCents),
-  };
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    client_reference_id: user.id,
-    mode: PLAN_BILLING_MODE[requestedPlan],
-    line_items: [{ price: PRICE_IDS[requestedPlan], quantity: 1 }],
-    success_url: `${appBaseUrl}/#/editor?upgrade=success`,
-    cancel_url: `${appBaseUrl}/#/editor`,
-    metadata,
-    discounts: discountCouponId ? [{ coupon: discountCouponId }] : undefined,
-    subscription_data: PLAN_BILLING_MODE[requestedPlan] === "subscription"
-      ? { metadata }
-      : undefined,
-  });
-
-  return new Response(JSON.stringify({ url: session.url }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 });

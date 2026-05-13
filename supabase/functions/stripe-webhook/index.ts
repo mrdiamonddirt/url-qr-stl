@@ -15,6 +15,21 @@
 import Stripe from "https://esm.sh/stripe@14?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
+type ProfilePlan = "free" | "premium_monthly" | "premium_yearly" | "lifetime";
+
+const PRICE_TO_PLAN: Record<string, { plan: ProfilePlan; billingCycle: "monthly" | "yearly" | "lifetime" }> = {
+  [Deno.env.get("STRIPE_PRICE_ID_MONTHLY") ?? ""]: { plan: "premium_monthly", billingCycle: "monthly" },
+  [Deno.env.get("STRIPE_PRICE_ID_YEARLY") ?? ""]: { plan: "premium_yearly", billingCycle: "yearly" },
+  [Deno.env.get("STRIPE_PRICE_ID_LIFETIME") ?? ""]: { plan: "lifetime", billingCycle: "lifetime" },
+};
+
+function getPlanFromPriceId(priceId: string | null | undefined): { plan: ProfilePlan; billingCycle: "monthly" | "yearly" | "lifetime" } {
+  if (priceId && PRICE_TO_PLAN[priceId]) {
+    return PRICE_TO_PLAN[priceId];
+  }
+  return { plan: "free", billingCycle: "monthly" };
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "stripe-signature, content-type",
@@ -66,22 +81,13 @@ Deno.serve(async (req) => {
     return data?.id ?? null;
   }
 
-  async function updateProfileToPremiumByUserId(
+  async function updateProfileByUserId(
     userId: string,
-    customerId: string | null,
-    subscriptionId: string,
-    periodEndUnix: number,
+    values: Record<string, string | number | boolean | null>,
   ) {
-    const payload = {
-      plan: "premium",
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscriptionId,
-      subscription_ends_at: new Date(periodEndUnix * 1000).toISOString(),
-    };
-
     const { data, error } = await supabase
       .from("profiles")
-      .update(payload)
+      .update(values)
       .eq("id", userId)
       .select("id");
 
@@ -95,13 +101,13 @@ Deno.serve(async (req) => {
       return;
     }
 
-    console.log("[stripe-webhook] Profile upgraded for userId", userId);
+    console.log("[stripe-webhook] Profile updated for userId", userId, values.plan ?? "(unchanged)");
   }
 
   async function updatePlanBySubscriptionOrCustomer(
     subscriptionId: string,
     customerId: string | null,
-    values: Record<string, string | null>,
+    values: Record<string, string | number | boolean | null>,
   ) {
     const bySubscription = await supabase
       .from("profiles")
@@ -144,35 +150,73 @@ Deno.serve(async (req) => {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    const customerId = (session.customer as string | null) ?? null;
+    const metadataUserId = (session.metadata?.supabase_user_id as string | undefined)
+      ?? (session.client_reference_id as string | undefined);
+    const userId = metadataUserId ?? await resolveUserIdFromCustomer(customerId);
+    const sourcePlan = (session.metadata?.source_plan as string | undefined) ?? null;
+    const upgradeCreditCents = Number(session.metadata?.upgrade_credit_cents ?? "0");
+
     if (session.mode === "subscription") {
       const subscriptionId = session.subscription as string;
       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-      const customerId = (session.customer as string | null) ?? null;
-      const metadataUserId = (subscription.metadata?.supabase_user_id as string | undefined)
+      const subscriptionMetadataUserId = (subscription.metadata?.supabase_user_id as string | undefined)
         ?? (session.metadata?.supabase_user_id as string | undefined)
         ?? (session.client_reference_id as string | undefined);
-      const userId = metadataUserId ?? await resolveUserIdFromCustomer(customerId);
+      const subscriptionUserId = subscriptionMetadataUserId ?? await resolveUserIdFromCustomer(customerId);
+      const firstPriceId = subscription.items.data[0]?.price?.id;
+      const nextPlan = getPlanFromPriceId(firstPriceId);
 
       console.log("[stripe-webhook] checkout.session.completed:", {
         subscriptionId,
         subscription_metadata: subscription.metadata,
         session_metadata: session.metadata,
-        userId,
+        userId: subscriptionUserId,
+        plan: nextPlan.plan,
         session_customer: customerId,
       });
 
-      if (userId) {
-        await updateProfileToPremiumByUserId(
-          userId,
-          customerId,
-          subscriptionId,
-          subscription.current_period_end,
-        );
+      if (subscriptionUserId) {
+        await updateProfileByUserId(subscriptionUserId, {
+          plan: nextPlan.plan,
+          billing_cycle: nextPlan.billingCycle,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
+          cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+          canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+          lifetime_activated_at: null,
+          upgrade_credit_source_plan: sourcePlan,
+          upgrade_credit_amount_cents: Number.isFinite(upgradeCreditCents) ? upgradeCreditCents : 0,
+          last_checkout_price_id: firstPriceId ?? null,
+        });
       } else {
         console.error(
           "[stripe-webhook] checkout.session.completed: no resolvable user id",
           subscriptionId,
         );
+      }
+    }
+
+    if (session.mode === "payment") {
+      const lineItems = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
+      const priceId = lineItems.data[0]?.price?.id;
+      const nextPlan = getPlanFromPriceId(priceId);
+
+      if (userId) {
+        await updateProfileByUserId(userId, {
+          plan: nextPlan.plan,
+          billing_cycle: nextPlan.billingCycle,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: null,
+          subscription_ends_at: null,
+          cancel_at_period_end: false,
+          canceled_at: null,
+          lifetime_activated_at: nextPlan.plan === "lifetime" ? new Date().toISOString() : null,
+          upgrade_credit_source_plan: sourcePlan,
+          upgrade_credit_amount_cents: Number.isFinite(upgradeCreditCents) ? upgradeCreditCents : 0,
+          last_checkout_price_id: priceId ?? null,
+        });
       }
     }
   }
@@ -181,18 +225,28 @@ Deno.serve(async (req) => {
     const subscription = event.data.object as Stripe.Subscription;
     await updatePlanBySubscriptionOrCustomer(subscription.id, subscription.customer as string | null, {
       plan: "free",
+      billing_cycle: "none",
       stripe_subscription_id: null,
       subscription_ends_at: null,
+      cancel_at_period_end: false,
+      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : new Date().toISOString(),
     });
   }
 
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
     const isActive = subscription.status === "active" || subscription.status === "trialing";
+    const firstPriceId = subscription.items.data[0]?.price?.id;
+    const nextPlan = getPlanFromPriceId(firstPriceId);
+
     await updatePlanBySubscriptionOrCustomer(subscription.id, subscription.customer as string | null, {
-      plan: isActive ? "premium" : "free",
+      plan: isActive ? nextPlan.plan : "free",
+      billing_cycle: isActive ? nextPlan.billingCycle : "none",
       stripe_subscription_id: subscription.id,
-      subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
+      subscription_ends_at: isActive ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+      cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+      canceled_at: subscription.canceled_at ? new Date(subscription.canceled_at * 1000).toISOString() : null,
+      last_checkout_price_id: firstPriceId ?? null,
     });
   }
 

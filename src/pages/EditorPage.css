@@ -335,10 +335,11 @@
 .account-drawer {
   position: fixed;
   top: var(--editor-header-height, 88px);
+  bottom: 0;
   right: 0;
-  height: calc(100dvh - var(--editor-header-height, 88px));
+  height: auto;
   width: min(380px, calc(100vw - 20px));
-  padding: 24px 22px 24px;
+  padding: 24px 22px max(16px, env(safe-area-inset-bottom));
   background: rgba(8, 18, 33, 0.985);
   color: #f5f8fc;
   box-shadow: -24px 0 60px rgba(10, 17, 28, 0.28);
@@ -348,7 +349,7 @@
   z-index: 115;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   overflow: hidden;
 }
 
@@ -359,68 +360,47 @@
 .account-drawer__scroll-shell {
   flex: 1 1 auto;
   min-height: 0;
-  position: relative;
-}
-
-.account-drawer__scroll-shell::before,
-.account-drawer__scroll-shell::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 18px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.account-drawer__scroll-shell::before {
-  top: 0;
-  background: linear-gradient(180deg, rgba(8, 18, 33, 0.95) 0%, rgba(8, 18, 33, 0) 100%);
-}
-
-.account-drawer__scroll-shell::after {
-  bottom: 0;
-  background: linear-gradient(0deg, rgba(8, 18, 33, 0.97) 0%, rgba(8, 18, 33, 0) 100%);
-}
-
-.account-drawer__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
   display: grid;
   align-content: start;
-  gap: 18px;
+  gap: 14px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   overscroll-behavior: contain;
-  padding: 2px 6px 10px 0;
+  padding: 2px 6px max(14px, env(safe-area-inset-bottom)) 0;
+  scroll-padding-bottom: max(14px, env(safe-area-inset-bottom));
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(151, 244, 211, 0.72) rgba(255, 255, 255, 0.12);
 }
 
-.account-drawer__body::-webkit-scrollbar {
+.account-drawer__body {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.account-drawer__scroll-shell::-webkit-scrollbar {
   width: 11px;
 }
 
-.account-drawer__body::-webkit-scrollbar-track {
+.account-drawer__scroll-shell::-webkit-scrollbar-track {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
   border-radius: 999px;
 }
 
-.account-drawer__body::-webkit-scrollbar-thumb {
+.account-drawer__scroll-shell::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, rgba(125, 200, 255, 0.9) 0%, rgba(149, 244, 211, 0.94) 100%);
   border-radius: 999px;
   border: 2px solid rgba(8, 18, 33, 0.9);
   box-shadow: 0 0 0 1px rgba(9, 17, 29, 0.18);
 }
 
-.account-drawer__body::-webkit-scrollbar-thumb:hover {
+.account-drawer__scroll-shell::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, rgba(148, 213, 255, 0.98) 0%, rgba(167, 248, 220, 0.98) 100%);
 }
 
-.account-drawer__body::-webkit-scrollbar-thumb:active {
+.account-drawer__scroll-shell::-webkit-scrollbar-thumb:active {
   background: linear-gradient(180deg, rgba(110, 188, 250, 0.96) 0%, rgba(136, 236, 198, 0.96) 100%);
 }
 
@@ -714,7 +694,7 @@
 }
 
 .editor-card--recent ion-card-content {
-  padding: 4px 20px 12px;
+  padding: 4px 20px 8px;
 }
 
 .workflow-banner {
@@ -1197,6 +1177,58 @@
   text-align: center;
 }
 
+.import-tools {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(244, 249, 255, 0.9);
+  border: 1px solid rgba(27, 76, 120, 0.14);
+  z-index: 2;
+}
+
+.import-color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #1d3553;
+  letter-spacing: 0.02em;
+}
+
+.import-color-picker input[type="color"] {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(29, 53, 83, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.import-color-picker strong {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #355678;
+  min-width: 62px;
+}
+
+.import-save-btn {
+  margin: 0;
+  --border-radius: 10px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .preview-corner-edit {
   position: absolute;
   top: 10px;
@@ -1523,6 +1555,11 @@
 
 .stage-next-btn--import {
   top: auto;
+  bottom: 70px;
+}
+
+.stage-next-btn--compose {
+  top: auto;
   bottom: 12px;
 }
 
@@ -1740,16 +1777,16 @@
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x proximity;
-  padding-bottom: 2px;
+  padding-bottom: 0;
 }
 
 .history-card {
-  flex: 0 0 212px;
-  min-width: 212px;
+  flex: 0 0 196px;
+  min-width: 196px;
   display: flex;
   align-items: stretch;
   gap: 6px;
@@ -1781,10 +1818,10 @@
   display: grid;
   gap: 3px;
   width: 100%;
-  min-height: 96px;
+  min-height: 82px;
   align-content: start;
   text-align: left;
-  padding: 9px 11px;
+  padding: 8px 10px;
   border: 1px solid rgba(20, 45, 70, 0.1);
   border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f7fafd 100%);
@@ -2048,7 +2085,7 @@
 
   .account-drawer {
     width: min(290px, calc(100vw - 16px));
-    padding: 18px 16px;
+    padding: 18px 16px max(14px, env(safe-area-inset-bottom));
   }
 
   .account-drawer__body {
@@ -2068,8 +2105,8 @@
   }
 
   .history-card {
-    flex-basis: 210px;
-    min-width: 210px;
+    flex-basis: 192px;
+    min-width: 192px;
   }
 
   .stage-next-btn--floating {
@@ -2128,6 +2165,18 @@
   }
 
   .toolbar-badge {
+    display: none;
+  }
+
+  .toolbar-dashboard-btn {
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    gap: 0;
+  }
+
+  .toolbar-dashboard-btn span {
     display: none;
   }
 
@@ -2276,8 +2325,18 @@
   }
 
   .account-drawer {
-    width: calc(100vw - 8px);
+    width: calc(100vw - 10px);
     border-top-left-radius: 16px;
+  }
+
+  .history-card {
+    flex-basis: 176px;
+    min-width: 176px;
+  }
+
+  .history-select-btn {
+    min-height: 78px;
+    padding: 7px 9px;
   }
 }
 

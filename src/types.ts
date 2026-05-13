@@ -84,13 +84,24 @@ export type StlExportRecord = {
   exportedAt: string;
 };
 
+export type Plan = "free" | "premium" | "premium_monthly" | "premium_yearly" | "lifetime";
+export type PaidPlan = Exclude<Plan, "free">;
+export type CheckoutTargetPlan = "premium_monthly" | "premium_yearly" | "lifetime";
+
 export type Profile = {
   id: string;
-  plan: "free" | "premium";
+  plan: Plan;
+  billing_cycle?: "none" | "monthly" | "yearly" | "lifetime";
   redirect_mode?: RedirectMode;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_ends_at: string | null;
+  cancel_at_period_end?: boolean;
+  canceled_at?: string | null;
+  lifetime_activated_at?: string | null;
+  upgrade_credit_source_plan?: string | null;
+  upgrade_credit_amount_cents?: number;
+  last_checkout_price_id?: string | null;
   monthly_scans: number;
   monthly_reset_at: string | null;
   created_at: string;
@@ -129,7 +140,7 @@ export type RecordScanSuccess = {
   original_url: string;
   scan_count: number;
   monthly_scans?: number;
-  owner_plan?: "free" | "premium";
+  owner_plan?: Plan;
   redirect_mode?: RedirectMode;
 };
 

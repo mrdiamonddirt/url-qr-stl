@@ -11,6 +11,7 @@ import TermsPage from './pages/TermsPage';
 import SettingsPage from './pages/SettingsPage';
 import { getCurrentUser, getProfile, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
+import { isPaidPlan } from './lib/plans';
 import { Profile } from './types';
 
 /* Core CSS required for Ionic components to work properly */
@@ -147,7 +148,7 @@ const App: React.FC = () => {
 
       setProfile(next);
 
-      if (next?.plan === "premium" || attempts >= maxAttempts) {
+      if (isPaidPlan(next?.plan) || attempts >= maxAttempts) {
         clearUpgradeSuccessFlag();
         if (intervalId !== undefined) {
           window.clearInterval(intervalId);

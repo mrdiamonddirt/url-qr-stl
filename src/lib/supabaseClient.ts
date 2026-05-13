@@ -1,5 +1,6 @@
 import { createClient, type User } from "@supabase/supabase-js";
-import { PremiumAnalyticsResult, Profile, RecordScanResult, SupabaseShortUrlRow, UserLogo } from "../types";
+import { CheckoutTargetPlan, PremiumAnalyticsResult, Profile, RecordScanResult, SupabaseShortUrlRow, UserLogo } from "../types";
+import { getPlanLimits } from "./plans";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -114,7 +115,7 @@ export async function updateProfileRedirectMode(userId: string, redirectMode: "i
 
   if (redirectMode === "instant") {
     // Prevent invalid writes when client plan state is stale.
-    query = query.eq("plan", "premium");
+    query = query.in("plan", ["premium", "premium_monthly", "premium_yearly", "lifetime"]);
   }
 
   const { data, error } = await query;
@@ -124,7 +125,7 @@ export async function updateProfileRedirectMode(userId: string, redirectMode: "i
   }
 
   if (!data || data.length === 0) {
-    throw new Error("Premium plan required for direct link.");
+    throw new Error("Paid plan required for direct link.");
   }
 }
 
@@ -137,7 +138,7 @@ export async function recordScan(
   return data as RecordScanResult;
 }
 
-export async function createCheckoutSession(origin: string): Promise<string> {
+export async function createCheckoutSession(origin: string, targetPlan: CheckoutTargetPlan = "premium_monthly"): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured.");
   
   console.log("[createCheckoutSession] Starting. Origin:", origin);
@@ -147,7 +148,7 @@ export async function createCheckoutSession(origin: string): Promise<string> {
     console.log("[createCheckoutSession] Auth session status:", session.data?.session ? "authenticated" : "not authenticated");
     
     const { data, error } = await supabase.functions.invoke("create-checkout-session", {
-      body: { origin },
+      body: { origin, targetPlan },
     });
     
     if (error) {
@@ -170,6 +171,25 @@ export async function createCheckoutSession(origin: string): Promise<string> {
   }
 }
 
+export async function createBillingPortalSession(origin: string): Promise<string> {
+  if (!supabase) throw new Error("Supabase not configured.");
+
+  const { data, error } = await supabase.functions.invoke("create-billing-portal-session", {
+    body: { origin },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const url = (data as { url?: string }).url;
+  if (!url) {
+    throw new Error("No billing portal URL in response.");
+  }
+
+  return url;
+}
+
 export async function getPremiumScanAnalytics(userId: string, days = 14): Promise<PremiumAnalyticsResult> {
   if (!supabase) {
     return { error: "no_client" };
@@ -188,7 +208,7 @@ export async function getPremiumScanAnalytics(userId: string, days = 14): Promis
 }
 
 const LOGO_BUCKET = "user-logos";
-const LOGO_LIMIT = 5;
+const DEFAULT_LOGO_LIMIT = 5;
 
 function getFileExtension(file: File): string {
   if (file.type === "image/png") return "png";
@@ -330,6 +350,9 @@ export async function deleteUserLogo(userId: string, logoId: string): Promise<vo
   }
 }
 
-export function getLogoLimit() {
-  return LOGO_LIMIT;
+export function getLogoLimit(plan?: string | null) {
+  if (!plan) {
+    return DEFAULT_LOGO_LIMIT;
+  }
+  return getPlanLimits(plan).maxLogos;
 }

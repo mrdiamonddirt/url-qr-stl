@@ -26,15 +26,24 @@ function getQrEncodingConfig(qrType: QrCodeType): { errorCorrectionLevel: "M" | 
   };
 }
 
-export async function toQrDataUrl(value: string, qrType: QrCodeType = "standard"): Promise<string> {
+type QrColorOptions = {
+  darkColor?: string;
+  lightColor?: string;
+};
+
+export async function toQrDataUrl(
+  value: string,
+  qrType: QrCodeType = "standard",
+  colorOptions: QrColorOptions = {}
+): Promise<string> {
   const config = getQrEncodingConfig(qrType);
   return QRCode.toDataURL(value, {
     errorCorrectionLevel: config.errorCorrectionLevel,
     margin: 1,
     width: 320,
     color: {
-      dark: "#111111",
-      light: "#ffffff",
+      dark: colorOptions.darkColor ?? "#111111",
+      light: colorOptions.lightColor ?? "#ffffff",
     },
   });
 }

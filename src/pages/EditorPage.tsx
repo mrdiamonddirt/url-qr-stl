@@ -62,7 +62,8 @@ import {
   uploadUserLogo,
   updateProfileRedirectMode,
 } from "../lib/supabaseClient";
-import { ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
+import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, isPaidPlan } from "../lib/plans";
+import { CheckoutTargetPlan, ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
 import EmojiPicker from 'emoji-picker-react';
@@ -71,10 +72,10 @@ const makeId = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 12);
 const makeCode = customAlphabet("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz", 7);
 
 const DEFAULT_STL: StlParams = {
-  widthMm: 400,
-  heightMm: 400,
-  depthMm: 28,
-  baseMm: 10,
+  widthMm: 40,
+  heightMm: 40,
+  depthMm: 2.8,
+  baseMm: 1,
   detail: "medium",
   invert: false,
   qrType: "standard",
@@ -87,17 +88,18 @@ type Props = {
 
 type RailStage = "import" | "compose" | "render" | "export";
 
+type DimensionUnit = "mm" | "cm" | "in";
+
 const FREE_SCAN_LIMIT = 20;
 const FREE_TAG_LIMIT = 3;
-const PREMIUM_TAG_LIMIT = 20;
-const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
-const LOGO_LIMIT = getLogoLimit();
+const DEFAULT_QR_COLOR = "#111111";
+const TRANSPARENT_QR_BACKGROUND = "rgba(0,0,0,0)";
 const LOGO_MAX_BYTES = 1_048_576;
 const LOGO_MIN_DIM = 64;
 const LOGO_MAX_DIM = 1024;
 const LOGO_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DEFAULT_FRAME_EMOJI = "🌊";
-const CTA_SIZE_SCALE = 10;
+const CTA_SIZE_SCALE = 1;
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
   impact: "Impact",
@@ -105,6 +107,30 @@ const CTA_FONT_OPTIONS: Record<string, string> = {
   serif: "Serif",
   condensed: "Condensed",
 };
+
+const DIMENSION_UNIT_OPTIONS: Array<{ value: DimensionUnit; label: string; mmFactor: number }> = [
+  { value: "mm", label: "Millimeters (mm)", mmFactor: 1 },
+  { value: "cm", label: "Centimeters (cm)", mmFactor: 10 },
+  { value: "in", label: "Inches (in)", mmFactor: 25.4 },
+];
+
+function getDimensionUnitFactor(unit: DimensionUnit): number {
+  return DIMENSION_UNIT_OPTIONS.find((option) => option.value === unit)?.mmFactor ?? 1;
+}
+
+function formatDimensionValue(valueMm: number, unit: DimensionUnit): number {
+  const converted = valueMm / getDimensionUnitFactor(unit);
+  return Number(converted.toFixed(unit === "in" ? 3 : 2));
+}
+
+function parseDimensionInput(rawValue: number, unit: DimensionUnit): number | null {
+  if (!Number.isFinite(rawValue) || rawValue <= 0) {
+    return null;
+  }
+
+  const valueMm = rawValue * getDimensionUnitFactor(unit);
+  return Number(valueMm.toFixed(3));
+}
 
 const QR_TYPE_OPTIONS: Array<{ value: QrCodeType; label: string; description: string }> = [
   { value: "standard", label: "Standard QR", description: "Balanced default for most tags." },
@@ -222,6 +248,11 @@ function extractFirstEmoji(value: string): string | null {
   return match?.[0] ?? null;
 }
 
+function normalizeFrameLogoUrl(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ?? "";
+}
+
 
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
@@ -238,11 +269,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [templateSelectorPreviews, setTemplateSelectorPreviews] = useState<Record<string, string>>({});
   const [supabaseHistory, setSupabaseHistory] = useState<SupabaseShortUrlRow[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [qrForegroundColor, setQrForegroundColor] = useState(DEFAULT_QR_COLOR);
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
   const [modelPreviewLoading, setModelPreviewLoading] = useState(false);
   const [modelFormat, setModelFormat] = useState<ModelFormat>("stl");
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
+  const [dimensionUnit, setDimensionUnit] = useState<DimensionUnit>("mm");
   const [activeRailStage, setActiveRailStage] = useState<RailStage>("import");
   const [isUrlEditorOpen, setIsUrlEditorOpen] = useState(true);
   const [savedRedirectMode, setSavedRedirectMode] = useState<RedirectMode>("interstitial");
@@ -257,6 +290,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [logosLoading, setLogosLoading] = useState(false);
   const [logoUploadBusy, setLogoUploadBusy] = useState(false);
   const [logoDeleteBusyId, setLogoDeleteBusyId] = useState<string | null>(null);
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<CheckoutTargetPlan>("premium_monthly");
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_FRAME_EMOJI);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
@@ -273,16 +307,33 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
   );
-  const isPremiumPlan = profile?.plan === "premium";
+  const currentPlan = profile?.plan ?? "free";
+  const isPremiumPlan = isPaidPlan(currentPlan);
+  const planLimits = getPlanLimits(currentPlan);
+  const logoLimit = getLogoLimit(currentPlan);
+  const allowedUpgradeTargets = getAllowedCheckoutTargets(currentPlan);
   const canToggleInstantRedirect = Boolean(user && isPremiumPlan);
   const hasPendingRedirectSave = canToggleInstantRedirect && pendingRedirectMode !== savedRedirectMode;
-  const tagLimit = isPremiumPlan ? PREMIUM_TAG_LIMIT : FREE_TAG_LIMIT;
+  const tagLimit = isPremiumPlan ? planLimits.maxActiveTags : FREE_TAG_LIMIT;
   const monthlyScans = profile?.monthly_scans ?? 0;
-  const monthlyScanPercent = Math.min(100, Math.round((monthlyScans / PREMIUM_MONTHLY_SCAN_LIMIT) * 100));
+  const monthlyScanPercent = Math.min(100, Math.round((monthlyScans / planLimits.monthlyScanLimit) * 100));
   const premiumTemplatesCount = TEMPLATE_PRESETS.filter((preset) => preset.premiumOnly).length;
+  const dimensionUnitLabel = useMemo(
+    () => DIMENSION_UNIT_OPTIONS.find((option) => option.value === dimensionUnit)?.label ?? "Millimeters (mm)",
+    [dimensionUnit]
+  );
+
+  const updateDimensionParam = useCallback((key: keyof Pick<StlParams, "widthMm" | "heightMm" | "depthMm" | "baseMm">, rawValue: number) => {
+    const nextValueMm = parseDimensionInput(rawValue, dimensionUnit);
+    if (nextValueMm === null) {
+      return;
+    }
+
+    setStlParams((prev) => ({ ...prev, [key]: nextValueMm }));
+  }, [dimensionUnit]);
 
   const accountEmail = user?.email ?? "Guest";
-  const planLabel = profile?.plan === "premium" ? "Premium" : "Free";
+  const planLabel = getPlanLabel(currentPlan);
   const accountTriggerLabel = user ? (user.email ?? "Account") : "Account";
   const accountInitials = useMemo(() => {
     const source = user?.email?.trim() || "URL 2 STL";
@@ -302,6 +353,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
     return 10;
   }, [composedPreviewUrl, modelPreviewReady, qrDataUrl]);
+
+  useEffect(() => {
+    if (!allowedUpgradeTargets.includes(selectedUpgradePlan)) {
+      setSelectedUpgradePlan(allowedUpgradeTargets[0] ?? "premium_monthly");
+    }
+  }, [allowedUpgradeTargets, selectedUpgradePlan]);
 
   useEffect(() => {
     if (profile?.redirect_mode === "instant" && isPremiumPlan) {
@@ -345,8 +402,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => buildSimplifiedEmojiLogoDataUrl(selectedEmoji || DEFAULT_FRAME_EMOJI),
     [selectedEmoji]
   );
-  const logoSlotsRemaining = Math.max(0, LOGO_LIMIT - userLogos.length);
-  const frameLogoPreviewUrl = isFrameQr ? effectiveLogo?.public_url ?? simplifiedEmojiLogoDataUrl : "";
+  const logoSlotsRemaining = Math.max(0, logoLimit - userLogos.length);
+  const frameLogoPreviewUrl = useMemo(() => {
+    if (!isFrameQr) {
+      return "";
+    }
+    const normalizedLogoUrl = normalizeFrameLogoUrl(effectiveLogo?.public_url);
+    return normalizedLogoUrl || simplifiedEmojiLogoDataUrl;
+  }, [effectiveLogo?.public_url, isFrameQr, simplifiedEmojiLogoDataUrl]);
   const selectedQrTypeUnavailableReason = useMemo(
     () => getQrTypeUnavailableReason(stlParams.qrType),
     [stlParams.qrType]
@@ -418,6 +481,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           });
           setComposedPreviewUrl(image);
         } catch (err) {
+          setComposedPreviewUrl("");
           setError(err instanceof Error ? err.message : "Could not compose template preview.");
         }
       })();
@@ -552,7 +616,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
     (async () => {
       try {
-        const nextQr = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType);
+        const nextQr = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType, {
+          darkColor: qrForegroundColor,
+          lightColor: TRANSPARENT_QR_BACKGROUND,
+        });
         if (!cancelled) {
           setQrDataUrl(nextQr);
           setComposedPreviewUrl("");
@@ -569,7 +636,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     return () => {
       cancelled = true;
     };
-  }, [generated, getQrTargetUrl, stlParams.qrType]);
+  }, [generated, getQrTargetUrl, qrForegroundColor, stlParams.qrType]);
 
   async function handleDeleteTag(shortCode: string) {
     if (!user) return;
@@ -593,8 +660,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       return;
     }
 
-    if (userLogos.length >= LOGO_LIMIT) {
-      setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+    if (userLogos.length >= logoLimit) {
+      setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       return;
     }
 
@@ -619,7 +686,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not upload logo.";
       if (message.includes("logo_limit_exceeded")) {
-        setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+        setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       } else if (message.includes("premium_logo_access_required")) {
         setError("Frame logo uploads are premium-only.");
       } else {
@@ -745,8 +812,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     if (user && supabaseHistory.length >= tagLimit) {
       setError(
         isPremiumPlan
-          ? `You have reached the ${PREMIUM_TAG_LIMIT}-tag limit for Premium accounts.`
-          : `Free accounts are limited to ${FREE_TAG_LIMIT} active tags. Delete a tag or upgrade to Premium for up to ${PREMIUM_TAG_LIMIT} tags.`
+          ? `You have reached the ${planLimits.maxActiveTags}-tag limit for your plan.`
+          : `Free accounts are limited to ${FREE_TAG_LIMIT} active tags. Delete a tag or upgrade for up to ${planLimits.maxActiveTags} tags.`
       );
       return;
     }
@@ -836,7 +903,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       saveShortUrl(record);
       setGenerated(record);
       setRecentByUser(listShortUrlsByUser(user?.id));
-      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType));
+      setQrDataUrl(
+        await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType, {
+          darkColor: qrForegroundColor,
+          lightColor: TRANSPARENT_QR_BACKGROUND,
+        })
+      );
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
       setIsUrlEditorOpen(false);
@@ -912,7 +984,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     await moveToStage("compose");
 
     try {
-      setQrDataUrl(await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType));
+      setQrDataUrl(
+        await toQrDataUrl(getQrTargetUrl(record), stlParams.qrType, {
+          darkColor: qrForegroundColor,
+          lightColor: TRANSPARENT_QR_BACKGROUND,
+        })
+      );
       setStatus(`Loaded tag ${record.code}. You can adjust template settings or export.`);
     } catch (err) {
       setQrDataUrl("");
@@ -1028,13 +1105,52 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
   }
 
+  async function handleSaveQrPng() {
+    setError("");
+    setStatus("");
+
+    if (!generated) {
+      setError("Generate a QR code first.");
+      return;
+    }
+
+    if (!isPremiumPlan) {
+      setError("Saving QR PNG is a Premium feature.");
+      if (window.confirm("Saving QR PNG is a Premium feature. Upgrade now?")) {
+        if (user) {
+          await handleUpgrade();
+        } else {
+          localStorage.setItem("url-qr-stl.return-to", "/editor");
+          history.push("/auth");
+        }
+      }
+      return;
+    }
+
+    try {
+      const pngDataUrl = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType, {
+        darkColor: qrForegroundColor,
+        lightColor: TRANSPARENT_QR_BACKGROUND,
+      });
+      const link = document.createElement("a");
+      link.href = pngDataUrl;
+      link.download = `qr-${generated.code}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setStatus("QR PNG saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save QR PNG.");
+    }
+  }
+
   async function handleSignOut() {
     setAccountPanelOpen(false);
     await signOut();
     history.push("/editor");
   }
 
-  async function handleUpgrade() {
+  async function handleUpgrade(targetPlan: CheckoutTargetPlan = selectedUpgradePlan) {
     try {
       setAccountPanelOpen(false);
       // For Stripe redirect URLs, always use the actual origin (not BASE_URL subpath)
@@ -1042,7 +1158,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       console.log("[Upgrade] Starting checkout. Origin:", origin);
       console.log("[Upgrade] Current user:", user?.id);
       
-      const url = await createCheckoutSession(origin);
+      const url = await createCheckoutSession(origin, targetPlan);
       
       if (!url) {
         console.error("[Upgrade] No checkout URL returned");
@@ -1205,8 +1321,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     : "Locked"}
                 </span>
               </div>
-              {user && profile?.plan === "premium" && (
-                <IonBadge color="warning" className="toolbar-badge">Premium</IonBadge>
+              {user && isPremiumPlan && (
+                <IonBadge color="warning" className="toolbar-badge">{planLabel}</IonBadge>
               )}
               <button
                 type="button"
@@ -1244,7 +1360,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="account-drawer__body">
               <div className="account-stat-card">
                 <span>Subscription</span>
-                <strong>{isPremiumPlan ? `${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
+                <strong>{isPremiumPlan ? `${planLimits.monthlyScanLimit.toLocaleString()} scans / month` : `${FREE_SCAN_LIMIT} scans per free link`}</strong>
               </div>
               <div className="account-stat-card">
                 <span>Active tags</span>
@@ -1253,7 +1369,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               {isPremiumPlan && (
                 <div className="account-stat-card">
                   <span>Scans this month</span>
-                  <strong>{monthlyScans.toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} ({monthlyScanPercent}%)</strong>
+                  <strong>{monthlyScans.toLocaleString()} / {planLimits.monthlyScanLimit.toLocaleString()} ({monthlyScanPercent}%)</strong>
                 </div>
               )}
               <div className="account-stat-card">
@@ -1288,10 +1404,24 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="account-drawer__section">
               {user ? (
                 <>
-                  {!isPremiumPlan && (
-                    <IonButton expand="block" onClick={handleUpgrade}>
-                      Upgrade to Premium
-                    </IonButton>
+                  {!!allowedUpgradeTargets.length && (
+                    <>
+                      <div className="settings-tag-actions">
+                        {allowedUpgradeTargets.map((target) => (
+                          <IonButton
+                            key={target}
+                            size="small"
+                            fill={selectedUpgradePlan === target ? "solid" : "outline"}
+                            onClick={() => setSelectedUpgradePlan(target)}
+                          >
+                            {target === "premium_monthly" ? "Monthly" : target === "premium_yearly" ? "Yearly" : "Lifetime"}
+                          </IonButton>
+                        ))}
+                      </div>
+                      <IonButton expand="block" onClick={() => void handleUpgrade(selectedUpgradePlan)}>
+                        Upgrade - {formatPlanPrice(selectedUpgradePlan)}
+                      </IonButton>
+                    </>
                   )}
                   <IonButton expand="block" fill="outline" onClick={handleSignOut}>
                     <IonIcon slot="start" icon={logOutOutline} />
@@ -1387,8 +1517,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <IonCardContent>
                       <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
                       {" "}
-                      <IonButton size="small" onClick={handleUpgrade}>
-                        Upgrade to Premium - £3.99/mo
+                      <IonButton size="small" onClick={() => void handleUpgrade()}>
+                        Upgrade - {formatPlanPrice(selectedUpgradePlan)}
                       </IonButton>
                     </IonCardContent>
                   </IonCard>
@@ -1477,7 +1607,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
               <IonCard className="editor-card editor-card--stl">
                 <IonCardHeader>
-                  <IonCardTitle>STL Parameters</IonCardTitle>
+                  <IonCardTitle>Parameters</IonCardTitle>
                 </IonCardHeader>
                 <IonCardContent>
                   <div className="section-heading-row">
@@ -1485,47 +1615,50 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <p className="section-kicker">Output settings</p>
                       <h3>Tune the geometry for printability and detail.</h3>
                     </div>
-                    <span className="section-state">{stlParams.detail}</span>
+                    <span className="section-state">{dimensionUnitLabel}</span>
                   </div>
                   <div className="stl-grid">
                     <IonItem className="editor-item">
-                      <IonLabel position="stacked">Width (mm)</IonLabel>
+                      <IonLabel position="stacked">Units</IonLabel>
+                      <IonSelect
+                        value={dimensionUnit}
+                        onIonChange={(e) => setDimensionUnit(e.detail.value as DimensionUnit)}
+                      >
+                        {DIMENSION_UNIT_OPTIONS.map((option) => (
+                          <IonSelectOption key={option.value} value={option.value}>{option.label}</IonSelectOption>
+                        ))}
+                      </IonSelect>
+                    </IonItem>
+                    <IonItem className="editor-item">
+                      <IonLabel position="stacked">Width ({dimensionUnit})</IonLabel>
                       <IonInput
                         type="number"
-                        value={stlParams.widthMm}
-                        onIonInput={(e) =>
-                          setStlParams((prev) => ({ ...prev, widthMm: Number(e.detail.value) || prev.widthMm }))
-                        }
+                        value={formatDimensionValue(stlParams.widthMm, dimensionUnit)}
+                        onIonInput={(e) => updateDimensionParam("widthMm", Number(e.detail.value))}
                       />
                     </IonItem>
                     <IonItem className="editor-item">
-                      <IonLabel position="stacked">Height (mm)</IonLabel>
+                      <IonLabel position="stacked">Height ({dimensionUnit})</IonLabel>
                       <IonInput
                         type="number"
-                        value={stlParams.heightMm}
-                        onIonInput={(e) =>
-                          setStlParams((prev) => ({ ...prev, heightMm: Number(e.detail.value) || prev.heightMm }))
-                        }
+                        value={formatDimensionValue(stlParams.heightMm, dimensionUnit)}
+                        onIonInput={(e) => updateDimensionParam("heightMm", Number(e.detail.value))}
                       />
                     </IonItem>
                     <IonItem className="editor-item">
-                      <IonLabel position="stacked">Depth (mm)</IonLabel>
+                      <IonLabel position="stacked">Depth ({dimensionUnit})</IonLabel>
                       <IonInput
                         type="number"
-                        value={stlParams.depthMm}
-                        onIonInput={(e) =>
-                          setStlParams((prev) => ({ ...prev, depthMm: Number(e.detail.value) || prev.depthMm }))
-                        }
+                        value={formatDimensionValue(stlParams.depthMm, dimensionUnit)}
+                        onIonInput={(e) => updateDimensionParam("depthMm", Number(e.detail.value))}
                       />
                     </IonItem>
                     <IonItem className="editor-item">
-                      <IonLabel position="stacked">Base (mm)</IonLabel>
+                      <IonLabel position="stacked">Base ({dimensionUnit})</IonLabel>
                       <IonInput
                         type="number"
-                        value={stlParams.baseMm}
-                        onIonInput={(e) =>
-                          setStlParams((prev) => ({ ...prev, baseMm: Number(e.detail.value) || prev.baseMm }))
-                        }
+                        value={formatDimensionValue(stlParams.baseMm, dimensionUnit)}
+                        onIonInput={(e) => updateDimensionParam("baseMm", Number(e.detail.value))}
                       />
                     </IonItem>
                     <IonItem className="editor-item">
@@ -1568,8 +1701,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     <div className="premium-compare-col premium-compare-col--premium" role="listitem">
                       <p className="premium-compare-col__label">Premium</p>
                       <strong>Production mode</strong>
-                      <span>{PREMIUM_TAG_LIMIT} active tags</span>
-                      <span>{PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} monthly scans</span>
+                      <span>{planLimits.maxActiveTags} active tags</span>
+                      <span>{planLimits.monthlyScanLimit.toLocaleString()} monthly scans</span>
                       <span>{premiumTemplatesCount} premium templates unlocked</span>
                       <span>Direct Link toggle + analytics dashboard</span>
                     </div>
@@ -1580,14 +1713,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <strong>{isPremiumPlan ? "Premium analytics live" : "Premium analytics preview"}</strong>
                       <span>
                         {isPremiumPlan
-                          ? `Current usage: ${monthlyScans.toLocaleString()} of ${PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()} scans this cycle.`
+                          ? `Current usage: ${monthlyScans.toLocaleString()} of ${planLimits.monthlyScanLimit.toLocaleString()} scans this cycle.`
                           : "Upgrade to unlock monthly scan tracking, premium template performance, and redirect conversion visibility."}
                       </span>
                     </div>
                   </div>
                   {!isPremiumPlan && (
-                    <IonButton expand="block" onClick={handleUpgrade}>
-                      Upgrade to Premium
+                    <IonButton expand="block" onClick={() => void handleUpgrade()}>
+                      Upgrade - {formatPlanPrice(selectedUpgradePlan)}
                     </IonButton>
                   )}
                 </IonCardContent>
@@ -1714,6 +1847,29 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               </p>
                             </div>
                           )}
+                          <div className="import-tools">
+                            <label className="import-color-picker" htmlFor="qr-color-input">
+                              <span>QR color</span>
+                              <input
+                                id="qr-color-input"
+                                type="color"
+                                value={qrForegroundColor}
+                                onChange={(e) => setQrForegroundColor(e.target.value)}
+                                aria-label="Pick QR color"
+                              />
+                              <strong>{qrForegroundColor.toUpperCase()}</strong>
+                            </label>
+                            {qrDataUrl && (
+                              <IonButton
+                                className="import-save-btn"
+                                fill={isPremiumPlan ? "outline" : "clear"}
+                                onClick={() => void handleSaveQrPng()}
+                              >
+                                <IonIcon slot="start" icon={imageOutline} />
+                                {isPremiumPlan ? "Save QR PNG" : "Save QR PNG (Premium)"}
+                              </IonButton>
+                            )}
+                          </div>
                           {nextRailStage && (
                             <IonButton className="stage-next-btn stage-next-btn--floating stage-next-btn--import" onClick={() => void handleNextRailStage()}>
                               Next: {nextRailStage.label}
@@ -1792,7 +1948,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             </div>
                           )}
                           {nextRailStage && (
-                            <IonButton className="stage-next-btn stage-next-btn--floating" onClick={() => void handleNextRailStage()}>
+                            <IonButton className="stage-next-btn stage-next-btn--floating stage-next-btn--compose" onClick={() => void handleNextRailStage()}>
                               Next: {nextRailStage.label}
                             </IonButton>
                           )}
@@ -1974,7 +2130,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               </IonSelect>
                             </IonItem>
                             <IonItem className="editor-item">
-                              <IonLabel position="stacked">Text size (x10 px)</IonLabel>
+                              <IonLabel position="stacked">Text size (px)</IonLabel>
                               <IonInput
                                 type="number"
                                 min={selectedTemplate.ctaConfig.minSizePx * CTA_SIZE_SCALE}
@@ -2077,16 +2233,16 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           <div className="frame-logo-lock">
                             <IonIcon icon={diamondOutline} />
                             <p>Custom uploaded logos are premium-only. Emoji logos work for all Frame QR tags.</p>
-                            <IonButton size="small" onClick={handleUpgrade}>Upgrade</IonButton>
+                            <IonButton size="small" onClick={() => void handleUpgrade()}>Upgrade</IonButton>
                           </div>
                         ) : (
                           <>
-                            <p className="frame-logo-hint">Uploaded logo library: {userLogos.length}/{LOGO_LIMIT}</p>
+                            <p className="frame-logo-hint">Uploaded logo library: {userLogos.length}/{logoLimit}</p>
                             <div className="frame-logo-actions">
                               <IonButton
                                 fill="outline"
                                 size="small"
-                                disabled={logoUploadBusy || userLogos.length >= LOGO_LIMIT}
+                                disabled={logoUploadBusy || userLogos.length >= logoLimit}
                                 onClick={() => logoInputRef.current?.click()}
                               >
                                 <IonIcon slot="start" icon={addOutline} />

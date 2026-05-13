@@ -34,7 +34,7 @@ type CompositionLayout = {
 
 const BASE_CANVAS_SIZE = 480;
 const SELECTOR_PREVIEW_SIZE = 232;
-const CTA_SIZE_SCALE = 10;
+const CTA_SIZE_SCALE = 1;
 export const CTA_FONT_STACKS: Record<string, string> = {
   default: "'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
   impact: "Impact, 'Arial Black', sans-serif",
@@ -111,13 +111,20 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string, crossOrigin: "anonymous" | null = null): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    if (crossOrigin) {
+      image.crossOrigin = crossOrigin;
+    }
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Could not load QR preview image."));
     image.src = src;
   });
+}
+
+export function isRemoteImageUrl(src: string): boolean {
+  return /^https?:\/\//i.test(src);
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -699,7 +706,7 @@ export async function composeTemplatePreview({
     const logoUrl = values.frame_logo_url?.trim();
     if (logoUrl) {
       try {
-        const logoImage = await loadImage(logoUrl);
+        const logoImage = await loadImage(logoUrl, isRemoteImageUrl(logoUrl) ? "anonymous" : null);
         const logoPad = Math.round(layout.qrSize * 0.03);
         const logoBox = Math.max(28, Math.round(layout.qrSize * 0.24));
         const centerX = layout.qrX + layout.qrSize / 2;
@@ -719,7 +726,11 @@ export async function composeTemplatePreview({
         ctx.fill();
 
         ctx.drawImage(logoImage, logoX, logoY, logoBox, logoBox);
-      } catch {
+      } catch (error) {
+        console.warn("[composeTemplatePreview] Could not draw frame logo image.", {
+          logoUrl,
+          message: error instanceof Error ? error.message : String(error),
+        });
         // Keep preview/export functional even if the logo URL is stale.
       }
     }

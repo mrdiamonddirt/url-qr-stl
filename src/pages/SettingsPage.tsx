@@ -15,6 +15,7 @@ import { User } from "@supabase/supabase-js";
 import { arrowBackOutline, copyOutline, diamondOutline, openOutline, sparklesOutline, trashOutline } from "ionicons/icons";
 import { useHistory } from "react-router";
 import {
+  createBillingPortalSession,
   createCheckoutSession,
   deleteUserLogo,
   getLogoLimit,
@@ -24,8 +25,9 @@ import {
   setDefaultUserLogo,
   uploadUserLogo,
 } from "../lib/supabaseClient";
+import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, getUpgradeCreditLabel, isPaidPlan, isSubscriptionPlan } from "../lib/plans";
 import { shortUrlForCode } from "../lib/shortener";
-import { PremiumAnalyticsResult, Profile, SupabaseShortUrlRow, UserLogo } from "../types";
+import { CheckoutTargetPlan, PremiumAnalyticsResult, Profile, SupabaseShortUrlRow, UserLogo } from "../types";
 import "./SettingsPage.css";
 
 type Props = {
@@ -33,8 +35,6 @@ type Props = {
   profile: Profile | null;
 };
 
-const PREMIUM_MONTHLY_SCAN_LIMIT = 10_000;
-const LOGO_LIMIT = getLogoLimit();
 const LOGO_MAX_BYTES = 1_048_576;
 const LOGO_MIN_DIM = 64;
 const LOGO_MAX_DIM = 1024;
@@ -57,22 +57,37 @@ async function readImageDimensions(file: File): Promise<{ width: number; height:
 
 const SettingsPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
-  const isPremiumPlan = profile?.plan === "premium";
+  const currentPlan = profile?.plan ?? "free";
+  const isPaidUser = isPaidPlan(currentPlan);
+  const isSubscriptionUser = isSubscriptionPlan(currentPlan);
+  const planLimits = getPlanLimits(currentPlan);
+  const logoLimit = getLogoLimit(currentPlan);
+  const allowedUpgradeTargets = getAllowedCheckoutTargets(currentPlan);
+  const [selectedTargetPlan, setSelectedTargetPlan] = useState<CheckoutTargetPlan>(
+    allowedUpgradeTargets[0] ?? "premium_monthly"
+  );
   const [analytics, setAnalytics] = useState<PremiumAnalyticsResult | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [shortUrls, setShortUrls] = useState<SupabaseShortUrlRow[]>([]);
   const [logos, setLogos] = useState<UserLogo[]>([]);
   const [logosLoading, setLogosLoading] = useState(false);
   const [logoUploadBusy, setLogoUploadBusy] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
   const [logoDeleteBusyId, setLogoDeleteBusyId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!allowedUpgradeTargets.includes(selectedTargetPlan)) {
+      setSelectedTargetPlan(allowedUpgradeTargets[0] ?? "premium_monthly");
+    }
+  }, [allowedUpgradeTargets, selectedTargetPlan]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadAnalytics() {
-      if (!user || !isPremiumPlan) {
+      if (!user || !isPaidUser) {
         setAnalytics(null);
         return;
       }
@@ -89,7 +104,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
     return () => {
       cancelled = true;
     };
-  }, [isPremiumPlan, user]);
+  }, [isPaidUser, user]);
 
   useEffect(() => {
     if (!user) {
@@ -103,7 +118,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
   }, [user]);
 
   useEffect(() => {
-    if (!user || !isPremiumPlan) {
+    if (!user || !isPaidUser) {
       setLogos([]);
       return;
     }
@@ -115,7 +130,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
         setError(err instanceof Error ? err.message : "Could not load logos.");
       })
       .finally(() => setLogosLoading(false));
-  }, [isPremiumPlan, user]);
+  }, [isPaidUser, user]);
 
   const peakDailyScans = useMemo(() => {
     if (!analytics || "error" in analytics) {
@@ -124,22 +139,55 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
     return Math.max(1, ...analytics.daily_scans.map((entry) => entry.scans));
   }, [analytics]);
 
-  const logoSlotsRemaining = Math.max(0, LOGO_LIMIT - logos.length);
+  const logoSlotsRemaining = Math.max(0, logoLimit - logos.length);
 
-  async function handleUpgrade() {
+  const joinedDate = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : "-";
+  const renewalDate = profile?.subscription_ends_at
+    ? new Date(profile.subscription_ends_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : currentPlan === "lifetime"
+      ? "No renewal (lifetime access)"
+      : "-";
+
+  async function handleUpgrade(targetPlan: CheckoutTargetPlan) {
     if (!user) {
       localStorage.setItem("url-qr-stl.return-to", "/settings");
       history.push("/auth");
       return;
     }
 
-    const origin = window.location.origin;
-    const checkoutUrl = await createCheckoutSession(origin);
-    window.location.href = checkoutUrl;
+    setBillingBusy(true);
+    setError("");
+    try {
+      const origin = window.location.origin;
+      const checkoutUrl = await createCheckoutSession(origin, targetPlan);
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start checkout.");
+    } finally {
+      setBillingBusy(false);
+    }
+  }
+
+  async function handleManageSubscription() {
+    if (!user) return;
+
+    setBillingBusy(true);
+    setError("");
+    try {
+      const origin = window.location.origin;
+      const portalUrl = await createBillingPortalSession(origin);
+      window.location.href = portalUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open billing portal.");
+    } finally {
+      setBillingBusy(false);
+    }
   }
 
   async function handleUploadLogo(file: File) {
-    if (!user || !isPremiumPlan) {
+    if (!user || !isPaidUser) {
       setError("Frame logo uploads are premium-only.");
       return;
     }
@@ -154,8 +202,8 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       return;
     }
 
-    if (logos.length >= LOGO_LIMIT) {
-      setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+    if (logos.length >= logoLimit) {
+      setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       return;
     }
 
@@ -179,7 +227,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not upload logo.";
       if (message.includes("logo_limit_exceeded")) {
-        setError(`You can store up to ${LOGO_LIMIT} logos. Remove one to add another.`);
+        setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       } else {
         setError(message);
       }
@@ -245,19 +293,54 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
                 <IonCardTitle>Plan</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                <p><strong>Current:</strong> {isPremiumPlan ? "Premium" : "Free"}</p>
-                {isPremiumPlan ? (
+                <p><strong>Current:</strong> {getPlanLabel(currentPlan)}</p>
+                <p><strong>Member since:</strong> {joinedDate}</p>
+                <p><strong>Renewal:</strong> {renewalDate}</p>
+                {profile?.cancel_at_period_end && (
+                  <p><strong>Cancellation:</strong> Scheduled at period end</p>
+                )}
+                {isPaidUser ? (
                   <>
                     <p><strong>Redirect mode:</strong> Managed from the editor header toggle</p>
-                    <p><strong>Scans this cycle:</strong> {(profile?.monthly_scans ?? 0).toLocaleString()} / {PREMIUM_MONTHLY_SCAN_LIMIT.toLocaleString()}</p>
-                    <p><strong>Saved logos:</strong> {logos.length} / {LOGO_LIMIT}</p>
-                    <p><strong>Active tags:</strong> {shortUrls.length}</p>
+                    <p><strong>Tier:</strong> {getPlanLabel(currentPlan)}</p>
+                    <p><strong>Scans this cycle:</strong> {(profile?.monthly_scans ?? 0).toLocaleString()} / {planLimits.monthlyScanLimit.toLocaleString()}</p>
+                    <p><strong>Saved logos:</strong> {logos.length} / {logoLimit}</p>
+                    <p><strong>Active tags:</strong> {shortUrls.length} / {planLimits.maxActiveTags}</p>
+                    {planLimits.prioritySupport && <p><strong>Priority support:</strong> Enabled</p>}
+                    {isSubscriptionUser && (
+                      <IonButton expand="block" fill="outline" disabled={billingBusy} onClick={() => void handleManageSubscription()}>
+                        {billingBusy ? "Opening billing..." : "Manage / Cancel Subscription"}
+                      </IonButton>
+                    )}
                   </>
                 ) : (
                   <>
                     <p><strong>Redirect mode:</strong> Tap-to-continue interstitial</p>
                     <p><strong>Limit:</strong> 20 scans per free link</p>
-                    <IonButton expand="block" onClick={handleUpgrade}>Upgrade to Premium</IonButton>
+                  </>
+                )}
+                {!!allowedUpgradeTargets.length && (
+                  <>
+                    <p><strong>Upgrade options:</strong></p>
+                    <div className="settings-tag-actions">
+                      {allowedUpgradeTargets.map((target) => (
+                        <IonButton
+                          key={target}
+                          size="small"
+                          fill={selectedTargetPlan === target ? "solid" : "outline"}
+                          onClick={() => setSelectedTargetPlan(target)}
+                        >
+                          {target === "premium_monthly" ? "Monthly" : target === "premium_yearly" ? "Yearly" : "Lifetime"}
+                        </IonButton>
+                      ))}
+                    </div>
+                    <p><strong>Selected:</strong> {formatPlanPrice(selectedTargetPlan)}</p>
+                    {!!getUpgradeCreditLabel(currentPlan, selectedTargetPlan) && (
+                      <p><strong>Credit:</strong> {getUpgradeCreditLabel(currentPlan, selectedTargetPlan)}</p>
+                    )}
+                    <IonButton expand="block" disabled={billingBusy} onClick={() => void handleUpgrade(selectedTargetPlan)}>
+                      {billingBusy ? "Starting checkout..." : "Continue to Checkout"}
+                    </IonButton>
                   </>
                 )}
               </IonCardContent>
@@ -283,7 +366,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
                   </li>
                   <li>
                     <IonIcon icon={sparklesOutline} />
-                    Frame QR logo library (up to {LOGO_LIMIT} uploads)
+                    Frame QR logo library (up to {logoLimit} uploads)
                   </li>
                 </ul>
               </IonCardContent>
@@ -294,16 +377,16 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
                 <IonCardTitle>Logo Manager</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                {!isPremiumPlan && (
+                {!isPaidUser && (
                   <>
                     <p>Frame logo uploads are premium-only.</p>
-                    <IonButton onClick={handleUpgrade}>Upgrade to unlock logos</IonButton>
+                    <IonButton onClick={() => void handleUpgrade("premium_monthly")}>Upgrade to unlock logos</IonButton>
                   </>
                 )}
-                {isPremiumPlan && (
+                {isPaidUser && (
                   <>
                     <div className="settings-logo-toolbar">
-                      <IonBadge color="primary">{logos.length}/{LOGO_LIMIT} used</IonBadge>
+                      <IonBadge color="primary">{logos.length}/{logoLimit} used</IonBadge>
                       <label className="settings-upload-label">
                         <input
                           type="file"
@@ -317,7 +400,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
                             e.currentTarget.value = "";
                           }}
                         />
-                        <IonButton size="small" disabled={logoUploadBusy || logos.length >= LOGO_LIMIT}>
+                        <IonButton size="small" disabled={logoUploadBusy || logos.length >= logoLimit}>
                           {logoUploadBusy ? "Uploading..." : "Upload logo"}
                         </IonButton>
                       </label>
@@ -392,7 +475,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
               </IonCardContent>
             </IonCard>
 
-            {isPremiumPlan && (
+            {isPaidUser && (
               <IonCard className="settings-card settings-card--analytics">
                 <IonCardHeader>
                   <IonCardTitle>Premium Analytics Dashboard</IonCardTitle>

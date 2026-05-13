@@ -41,9 +41,10 @@ const TermsPage: React.FC = () => (
 
       <h3>3. Premium plan</h3>
       <p>
-        Premium costs £3.99/month and removes the scan limit. Subscriptions are billed monthly
-        and can be cancelled at any time. Cancellation takes effect at the end of the current
-        billing period. Payments are processed by Stripe.
+        Paid plans include Premium Monthly (£3.99/month), Premium Yearly (£39.99/year), and
+        Lifetime (£109.99 one-time). Subscription plans can be cancelled at any time from the
+        billing portal, and cancellation takes effect at the end of the current billing period.
+        Payments are processed by Stripe.
       </p>
 
       <h3>4. Acceptable use</h3>

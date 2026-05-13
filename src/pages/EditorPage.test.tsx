@@ -158,10 +158,11 @@ describe("EditorPage template picker", () => {
     expect(screen.getByText("Next: Template Edit")).toBeInTheDocument();
   });
 
-  test("shows qr type selector and unavailable symbology guidance", () => {
+  test("shows qr type selector without unavailable-build copy", () => {
     renderEditor();
 
-    expect(screen.getByText(/Micro QR, rMQR, iQR, and SQRC are unavailable in this build\./i)).toBeInTheDocument();
+    expect(screen.getByText("QR type")).toBeInTheDocument();
+    expect(screen.queryByText(/not in this build|unavailable in this build/i)).not.toBeInTheDocument();
   });
 
   test("renders recent tag search and loaded local tags", async () => {
@@ -196,10 +197,10 @@ describe("EditorPage template picker", () => {
     expect(await screen.findByRole("button", { name: "Load previous tag ZZZ9876" })).toBeInTheDocument();
   });
 
-  test("shows default QR guidance for free users", () => {
+  test("does not show legacy qr guidance copy for free users", () => {
     renderEditor();
 
-    expect(screen.getByText(/Balanced default for most tags\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/Balanced default for most tags\./i)).not.toBeInTheDocument();
   });
 
   test("allows premium users to select Frame QR", () => {
@@ -218,7 +219,8 @@ describe("EditorPage template picker", () => {
     const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
     renderEditor(premiumProfile, premiumUser);
 
-    expect(screen.getByText(/Balanced default for most tags\./i)).toBeInTheDocument();
+    expect(screen.getByText("QR type")).toBeInTheDocument();
     expect(screen.queryByText(/available on Premium/i)).not.toBeInTheDocument();
   });
+
 });

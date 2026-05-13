@@ -69,7 +69,7 @@ const RedirectPage: React.FC = () => {
               <IonButton href={editorHref} expand="block" fill="solid">
                 Upgrade to Premium
               </IonButton>
-              <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" expand="block" fill="outline">
+              <IonButton href="https://url2stl.com/" expand="block" fill="outline">
                 Learn More
               </IonButton>
             </div>

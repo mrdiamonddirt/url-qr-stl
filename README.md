@@ -53,6 +53,7 @@ npm run build
 3. Add the callback URL:
 
 - `http://localhost:5173/auth/callback`
+- `https://url2stl.com/auth/callback`
 
 4. Run migration:
 
@@ -80,13 +81,17 @@ Not included yet:
 - Advanced mesh repair/smoothing options
 - Full analytics dashboard
 
-## Deploy to GitHub Pages
+## Production domain
+
+- Primary site URL: `https://url2stl.com/`
+
+## Deploy to GitHub Pages (optional preview)
 
 Repository target:
 
 - Owner: `mrdiamonddirt`
 - Repo: `url-qr-stl`
-- Site URL: `https://mrdiamonddirt.github.io/url-qr-stl/`
+- Preview URL: `https://mrdiamonddirt.github.io/url-qr-stl/`
 
 This repo includes a workflow at `.github/workflows/deploy-pages.yml` that deploys on every push to `main`.
 

@@ -46,7 +46,7 @@ export async function signInWithGoogle() {
   }
 
   // Use PKCE flow: Supabase appends ?code= (not #fragment), so use path-based redirect.
-  // BASE_URL is '/url-qr-stl/' in prod, '/' in dev — gives correct full path.
+  // BASE_URL is root (`/`) so callback URL resolves to /auth/callback.
   const base = import.meta.env.BASE_URL ?? '/';
   const redirectTo = `${window.location.origin}${base}auth/callback`;
   console.log("[signInWithGoogle] Constructed redirect URL:", redirectTo);

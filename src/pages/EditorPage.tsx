@@ -47,7 +47,7 @@ import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
 import { composeTemplatePreview, composeTemplateSelectorPreview } from "../lib/templatePreview";
 import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../lib/stl";
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
-import { getQrTypeUnavailableReason, toQrDataUrl } from "../lib/qr";
+import { getQrTypeUnavailableReason, isPremiumQrType, toQrDataUrl } from "../lib/qr";
 import { listShortUrlsByUser, saveShortUrl, saveStlExport } from "../lib/storage";
 import {
   createCheckoutSession,
@@ -146,13 +146,9 @@ function parseDimensionInput(rawValue: number, unit: DimensionUnit): number | nu
   return Number(valueMm.toFixed(3));
 }
 
-const QR_TYPE_OPTIONS: Array<{ value: QrCodeType; label: string; description: string }> = [
-  { value: "standard", label: "Standard QR", description: "Balanced default for most tags." },
-  { value: "frame", label: "Frame QR", description: "Standard QR with stronger error recovery for centered artwork." },
-  { value: "micro", label: "Micro QR", description: "Compact variant for tiny labels." },
-  { value: "rmqr", label: "rMQR", description: "Rectangular Micro QR for narrow layouts." },
-  { value: "iqr", label: "iQR", description: "High-capacity square or rectangular format." },
-  { value: "sqrc", label: "SQRC", description: "Secure QR with private data segment." },
+const QR_TYPE_OPTIONS: Array<{ value: QrCodeType; label: string }> = [
+  { value: "standard", label: "Standard QR" },
+  { value: "frame", label: "Frame QR" },
 ];
 
 function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Record<string, string> {
@@ -425,10 +421,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     );
   }, [recentByUser, tagSearch]);
 
-  const selectedQrTypeOption = useMemo(
-    () => QR_TYPE_OPTIONS.find((option) => option.value === stlParams.qrType) ?? QR_TYPE_OPTIONS[0],
-    [stlParams.qrType]
-  );
   const isFrameQr = stlParams.qrType === "frame";
   const defaultLogo = useMemo(() => userLogos.find((logo) => logo.is_default) ?? null, [userLogos]);
   const selectedLogo = useMemo(() => userLogos.find((logo) => logo.id === selectedLogoId) ?? null, [selectedLogoId, userLogos]);
@@ -869,8 +861,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         return;
       }
 
-      if (isFrameQr && !isPremiumPlan) {
-        setError("Frame QR is a Premium feature. Upgrade to create tags with centered artwork and enhanced error recovery.");
+      if (isPremiumQrType(stlParams.qrType) && !isPremiumPlan) {
+        setError("This QR format is a Premium feature. Upgrade to create tags with advanced symbologies and artwork options.");
         return;
       }
 
@@ -975,9 +967,17 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setError(unavailableReason);
       return;
     }
-    if (nextType === "frame" && !isPremiumPlan) {
-      setError("Frame QR is a Premium feature. Upgrade to use custom logos and enhanced error recovery.");
-      if (window.confirm("Frame QR is a Premium feature. Upgrade now?")) {
+    if (isPremiumQrType(nextType) && !isPremiumPlan) {
+      const premiumFeatureLabel =
+        nextType === "frame"
+          ? "Frame QR"
+          : nextType === "micro"
+            ? "Micro QR"
+            : nextType === "rmqr"
+              ? "rMQR"
+              : "iQR";
+      setError(`${premiumFeatureLabel} is a Premium feature. Upgrade to unlock advanced QR formats and artwork options.`);
+      if (window.confirm(`${premiumFeatureLabel} is a Premium feature. Upgrade now?`)) {
         if (user) {
           void handleUpgrade();
         } else {
@@ -1947,22 +1947,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     >
                       {QR_TYPE_OPTIONS.map((option) => {
                         const unavailableReason = getQrTypeUnavailableReason(option.value);
-                        const isFrameQrLocked = option.value === "frame" && !isPremiumPlan;
+                        const isPremiumLocked = isPremiumQrType(option.value) && !isPremiumPlan;
                         return (
-                          <IonSelectOption key={option.value} value={option.value} disabled={Boolean(unavailableReason) || isFrameQrLocked}>
-                            {option.label}{isFrameQrLocked ? " (Premium)" : ""}
+                          <IonSelectOption key={option.value} value={option.value} disabled={Boolean(unavailableReason) || isPremiumLocked}>
+                            {option.label}{isPremiumLocked ? " (Premium)" : ""}
                           </IonSelectOption>
                         );
                       })}
                     </IonSelect>
                   </IonItem>
-                  <p className="section-helper qr-type-helper">
-                    {selectedQrTypeUnavailableReason
-                      ? selectedQrTypeUnavailableReason
-                      : stlParams.qrType === "frame" && !isPremiumPlan
-                        ? "Frame QR with custom logos and enhanced error recovery is available on Premium. Micro QR, rMQR, iQR, and SQRC are unavailable in this build."
-                        : `${selectedQrTypeOption.description} Micro QR, rMQR, iQR, and SQRC are unavailable in this build.`}
-                  </p>
 
                   <div className="timeline-rail" aria-label="Preview timeline">
                     <div className="timeline-rail__track" style={{ "--timeline-progress": `${railStageProgress}%` } as CSSProperties} />

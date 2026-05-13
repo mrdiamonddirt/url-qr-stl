@@ -1,5 +1,18 @@
 import { createClient, type User } from "@supabase/supabase-js";
-import { CheckoutTargetPlan, PremiumAnalyticsResult, Profile, RecordScanResult, SupabaseShortUrlRow, UserLogo } from "../types";
+import {
+  AdminBanUpdateResult,
+  AdminDashboardMetrics,
+  AdminDowngradeTiming,
+  AdminPlanUpdateResult,
+  AdminUsersListResult,
+  CheckoutTargetPlan,
+  Plan,
+  PremiumAnalyticsResult,
+  Profile,
+  RecordScanResult,
+  SupabaseShortUrlRow,
+  UserLogo,
+} from "../types";
 import { getPlanLimits } from "./plans";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -140,6 +153,7 @@ export async function recordScan(
 
 export async function createCheckoutSession(origin: string, targetPlan: CheckoutTargetPlan = "premium_monthly"): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured.");
+  const basePath = import.meta.env.BASE_URL ?? "/";
   
   console.log("[createCheckoutSession] Starting. Origin:", origin);
   
@@ -148,7 +162,7 @@ export async function createCheckoutSession(origin: string, targetPlan: Checkout
     console.log("[createCheckoutSession] Auth session status:", session.data?.session ? "authenticated" : "not authenticated");
     
     const { data, error } = await supabase.functions.invoke("create-checkout-session", {
-      body: { origin, targetPlan },
+      body: { origin, targetPlan, basePath },
     });
     
     if (error) {
@@ -173,9 +187,10 @@ export async function createCheckoutSession(origin: string, targetPlan: Checkout
 
 export async function createBillingPortalSession(origin: string): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured.");
+  const basePath = import.meta.env.BASE_URL ?? "/";
 
   const { data, error } = await supabase.functions.invoke("create-billing-portal-session", {
-    body: { origin },
+    body: { origin, basePath },
   });
 
   if (error) {
@@ -355,4 +370,85 @@ export function getLogoLimit(plan?: string | null) {
     return DEFAULT_LOGO_LIMIT;
   }
   return getPlanLimits(plan).maxLogos;
+}
+
+type AdminPanelAction = "get_dashboard_metrics" | "list_users" | "update_user_plan" | "set_user_ban";
+
+type AdminPanelBasePayload = {
+  action: AdminPanelAction;
+};
+
+type AdminPanelResponse<T> = {
+  data?: T;
+  error?: string;
+};
+
+export const OWNER_ADMIN_EMAIL = "woodrowan@gmail.com";
+
+export function isOwnerAdminEmail(email: string | null | undefined): boolean {
+  return (email ?? "").toLowerCase() === OWNER_ADMIN_EMAIL;
+}
+
+async function invokeAdminPanel<T>(payload: AdminPanelBasePayload & Record<string, unknown>): Promise<T> {
+  if (!supabase) {
+    throw new Error("Supabase not configured.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("admin-panel", {
+    body: payload,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const parsed = (data as AdminPanelResponse<T>) ?? {};
+  if (parsed.error) {
+    throw new Error(parsed.error);
+  }
+
+  if (!parsed.data) {
+    throw new Error("Admin response did not include data.");
+  }
+
+  return parsed.data;
+}
+
+export async function getAdminDashboardMetrics(): Promise<AdminDashboardMetrics> {
+  return invokeAdminPanel<AdminDashboardMetrics>({ action: "get_dashboard_metrics" });
+}
+
+export async function listAdminUsers(page = 1, pageSize = 50, search = ""): Promise<AdminUsersListResult> {
+  return invokeAdminPanel<AdminUsersListResult>({
+    action: "list_users",
+    page,
+    pageSize,
+    search,
+  });
+}
+
+export async function updateAdminUserPlan(
+  targetUserId: string,
+  targetPlan: Plan,
+  downgradeTiming: AdminDowngradeTiming,
+): Promise<AdminPlanUpdateResult> {
+  return invokeAdminPanel<AdminPlanUpdateResult>({
+    action: "update_user_plan",
+    targetUserId,
+    targetPlan,
+    downgradeTiming,
+  });
+}
+
+export async function setAdminUserBan(
+  targetUserId: string,
+  isBanned: boolean,
+  reason = "",
+): Promise<AdminBanUpdateResult> {
+  return invokeAdminPanel<AdminBanUpdateResult>({
+    action: "set_user_ban",
+    targetUserId,
+    isBanned,
+    reason,
+  });
 }

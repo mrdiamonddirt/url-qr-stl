@@ -55,6 +55,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function normalizeBasePath(basePath: string | undefined): string {
+  if (!basePath || basePath === "/") {
+    return "";
+  }
+  const withLeadingSlash = basePath.startsWith("/") ? basePath : `/${basePath}`;
+  return withLeadingSlash.endsWith("/") ? withLeadingSlash.slice(0, -1) : withLeadingSlash;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -99,10 +107,12 @@ Deno.serve(async (req) => {
       .eq("id", user.id);
   }
 
-  const { origin, targetPlan } = await req.json() as {
+  const { origin, targetPlan, basePath } = await req.json() as {
     origin: string;
     targetPlan?: CheckoutTargetPlan;
+    basePath?: string;
   };
+  const appBaseUrl = `${origin}${normalizeBasePath(basePath)}`;
 
   const requestedPlan: CheckoutTargetPlan = targetPlan ?? "premium_monthly";
   if (!PRICE_IDS[requestedPlan]) {
@@ -150,8 +160,8 @@ Deno.serve(async (req) => {
     client_reference_id: user.id,
     mode: PLAN_BILLING_MODE[requestedPlan],
     line_items: [{ price: PRICE_IDS[requestedPlan], quantity: 1 }],
-    success_url: `${origin}/#/editor?upgrade=success`,
-    cancel_url: `${origin}/#/editor`,
+    success_url: `${appBaseUrl}/#/editor?upgrade=success`,
+    cancel_url: `${appBaseUrl}/#/editor`,
     metadata,
     discounts: discountCouponId ? [{ coupon: discountCouponId }] : undefined,
     subscription_data: PLAN_BILLING_MODE[requestedPlan] === "subscription"

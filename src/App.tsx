@@ -9,7 +9,8 @@ import AuthCallbackPage from './pages/AuthCallbackPage';
 import RedirectPage from './pages/RedirectPage';
 import TermsPage from './pages/TermsPage';
 import SettingsPage from './pages/SettingsPage';
-import { getCurrentUser, getProfile, supabase } from './lib/supabaseClient';
+import AdminPage from './pages/AdminPage';
+import { getCurrentUser, getProfile, isOwnerAdminEmail, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
 import { isPaidPlan } from './lib/plans';
 import { Profile } from './types';
@@ -190,6 +191,9 @@ const App: React.FC = () => {
           </Route>
           <Route exact path="/settings">
             <SettingsPage user={user} profile={profile} />
+          </Route>
+          <Route exact path="/admin">
+            {user && isOwnerAdminEmail(user.email) ? <AdminPage user={user} /> : <Redirect to="/settings" />}
           </Route>
           <Route exact path="/">
             <Redirect to="/editor" />

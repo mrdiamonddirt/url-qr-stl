@@ -1054,6 +1054,244 @@
   line-height: 1.4;
 }
 
+.editor-upsell-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.editor-upsell-picker--inline {
+  margin-top: 2px;
+}
+
+.editor-plan-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+
+.editor-plan-card {
+  position: relative;
+  width: 100%;
+  min-height: 76px;
+  padding: 8px 8px;
+  border: 1px solid rgba(33, 77, 117, 0.32);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 249, 254, 0.96) 100%);
+  color: #214d75;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 3px 8px rgba(20, 45, 70, 0.08);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.editor-plan-card::after {
+  content: "";
+  position: absolute;
+  inset: -18px -40px;
+  background: linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, 0.55) 50%, transparent 66%);
+  transform: translateX(-120%);
+  transition: transform 320ms ease;
+  pointer-events: none;
+}
+
+.editor-plan-card__name {
+  font-size: 0.8rem;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.editor-plan-card__price {
+  font-size: 0.88rem;
+  line-height: 1.1;
+  font-weight: 900;
+}
+
+.editor-plan-card__meta {
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.editor-plan-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(33, 77, 117, 0.65);
+  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
+  box-shadow: 0 10px 20px rgba(20, 45, 70, 0.16);
+}
+
+.editor-plan-card:hover::after {
+  transform: translateX(120%);
+}
+
+.editor-plan-card:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 10px rgba(20, 45, 70, 0.12);
+}
+
+.editor-plan-card:focus-visible {
+  outline: 2px solid rgba(23, 61, 97, 0.35);
+  outline-offset: 2px;
+}
+
+.editor-upsell-picker ion-button {
+  --border-radius: 8px;
+  --padding-start: 10px;
+  --padding-end: 10px;
+  min-height: 30px;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+}
+
+.editor-upsell-credit {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #2a425f;
+}
+
+.editor-upsell-cta {
+  --border-radius: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.editor-upsell-shell {
+  display: grid;
+  gap: 6px;
+}
+
+.editor-upsell-summary {
+  margin: 0;
+}
+
+.editor-upsell-row {
+  display: grid;
+  gap: 10px;
+}
+
+.editor-upsell-controls {
+  display: grid;
+  gap: 6px;
+}
+
+.recent-upsell-card {
+  background: linear-gradient(180deg, #fff7e9 0%, #fff1d6 100%);
+  border: 1px solid rgba(184, 120, 16, 0.24);
+  box-shadow: 0 8px 18px rgba(152, 95, 9, 0.12);
+}
+
+.recent-upsell-card ion-card-content {
+  padding: 9px 12px;
+}
+
+.editor-upsell-shell--recent .editor-upsell-summary {
+  color: #3c2b12;
+  font-size: 0.95rem;
+}
+
+.editor-upsell-shell--recent .editor-upsell-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-upsell-shell--recent .editor-upsell-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-upsell-shell--recent .editor-upsell-credit {
+  margin: 0;
+  color: #5b3d17;
+  font-size: 0.82rem;
+}
+
+.editor-upsell-shell--recent .editor-upsell-cta {
+  margin: 0;
+}
+
+.editor-card--pricing .editor-upsell-controls {
+  gap: 8px;
+}
+
+.editor-card--pricing .editor-upsell-cta {
+  margin: 0;
+  justify-self: stretch;
+}
+
+@media (max-width: 520px) {
+  .editor-plan-card-grid {
+    gap: 6px;
+  }
+
+  .editor-plan-card {
+    min-height: 68px;
+    padding: 7px 6px;
+  }
+
+  .editor-plan-card__name {
+    font-size: 0.72rem;
+  }
+
+  .editor-plan-card__price {
+    font-size: 0.8rem;
+  }
+
+  .editor-plan-card__meta {
+    font-size: 0.62rem;
+  }
+}
+
+@media (min-width: 1100px) {
+  .recent-upsell-card ion-card-content {
+    padding: 8px 12px;
+  }
+
+  .editor-upsell-shell--recent .editor-upsell-row {
+    gap: 8px;
+  }
+
+  .editor-upsell-shell--pricing .editor-upsell-row {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+  }
+
+  .editor-upsell-shell--pricing .editor-upsell-picker {
+    margin-bottom: 4px;
+  }
+
+  .editor-card--recent .editor-upsell-picker {
+    gap: 8px;
+  }
+
+  .editor-card--recent .editor-upsell-cta {
+    min-width: 230px;
+    margin: 0;
+  }
+
+  .editor-card--pricing .editor-upsell-picker ion-button {
+    min-width: 110px;
+  }
+
+  .editor-card--pricing .editor-upsell-cta {
+    margin: 0;
+  }
+}
+
 .template-selection-note--branding {
   margin-top: 10px;
 }
@@ -1787,26 +2025,27 @@
 .history-card {
   flex: 0 0 196px;
   min-width: 196px;
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
+  position: relative;
+  display: block;
   scroll-snap-align: start;
 }
 
 .history-delete-btn {
-  flex-shrink: 0;
+  position: absolute;
+  top: 7px;
+  right: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
   border: 1px solid rgba(220, 50, 50, 0.22);
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
   color: #c0392b;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
-  align-self: center;
+  z-index: 3;
 }
 
 .history-delete-btn:hover {
@@ -1821,7 +2060,7 @@
   min-height: 82px;
   align-content: start;
   text-align: left;
-  padding: 8px 10px;
+  padding: 8px 34px 8px 10px;
   border: 1px solid rgba(20, 45, 70, 0.1);
   border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f7fafd 100%);
@@ -2336,7 +2575,7 @@
 
   .history-select-btn {
     min-height: 78px;
-    padding: 7px 9px;
+    padding: 7px 30px 7px 9px;
   }
 }
 

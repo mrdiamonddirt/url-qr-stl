@@ -12,6 +12,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function normalizeBasePath(basePath: string | undefined): string {
+  if (!basePath || basePath === "/") {
+    return "";
+  }
+  const withLeadingSlash = basePath.startsWith("/") ? basePath : `/${basePath}`;
+  return withLeadingSlash.endsWith("/") ? withLeadingSlash.slice(0, -1) : withLeadingSlash;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -51,11 +59,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { origin } = await req.json() as { origin: string };
+  const { origin, basePath } = await req.json() as { origin: string; basePath?: string };
+  const appBaseUrl = `${origin}${normalizeBasePath(basePath)}`;
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${origin}/#/settings`,
+    return_url: `${appBaseUrl}/#/settings`,
   });
 
   return new Response(JSON.stringify({ url: session.url }), {

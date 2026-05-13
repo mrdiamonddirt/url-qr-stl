@@ -93,6 +93,11 @@ export type Profile = {
   plan: Plan;
   billing_cycle?: "none" | "monthly" | "yearly" | "lifetime";
   redirect_mode?: RedirectMode;
+  is_banned?: boolean;
+  banned_at?: string | null;
+  banned_reason?: string | null;
+  banned_by?: string | null;
+  plan_override_source?: "system" | "stripe_webhook" | "admin_manual" | "admin_stripe";
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_ends_at: string | null;
@@ -164,4 +169,58 @@ export type PremiumAnalyticsResult = {
   top_tags: PremiumAnalyticsTopTag[];
 } | {
   error: string;
+};
+
+export type AdminTopUserByScans = {
+  user_id: string;
+  email: string | null;
+  total_scans: number;
+};
+
+export type AdminDashboardMetrics = {
+  total_users: number;
+  total_tags: number;
+  total_scans: number;
+  paid_users: number;
+  free_users: number;
+  banned_users: number;
+  scans_last_7_days: number;
+  scans_last_30_days: number;
+  top_users_by_scans: AdminTopUserByScans[];
+};
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  created_at: string;
+  plan: Plan;
+  billing_cycle: "none" | "monthly" | "yearly" | "lifetime";
+  monthly_scans: number;
+  total_scans: number;
+  total_tags: number;
+  is_banned: boolean;
+  banned_at: string | null;
+  banned_reason: string | null;
+  stripe_subscription_id: string | null;
+  subscription_ends_at: string | null;
+};
+
+export type AdminUsersListResult = {
+  page: number;
+  page_size: number;
+  total: number;
+  users: AdminUserRow[];
+};
+
+export type AdminDowngradeTiming = "immediate" | "period_end";
+
+export type AdminPlanUpdateResult = {
+  ok: boolean;
+  mode: AdminDowngradeTiming;
+  message: string;
+};
+
+export type AdminBanUpdateResult = {
+  ok: boolean;
+  message: string;
 };

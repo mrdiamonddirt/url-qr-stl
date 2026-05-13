@@ -12,7 +12,7 @@ import {
 } from "@ionic/react";
 import { useEffect, useMemo, useState } from "react";
 import { User } from "@supabase/supabase-js";
-import { arrowBackOutline, copyOutline, diamondOutline, openOutline, sparklesOutline, trashOutline } from "ionicons/icons";
+import { arrowBackOutline, copyOutline, diamondOutline, openOutline, shieldCheckmarkOutline, sparklesOutline, trashOutline } from "ionicons/icons";
 import { useHistory } from "react-router";
 import {
   createBillingPortalSession,
@@ -21,6 +21,7 @@ import {
   getLogoLimit,
   getPremiumScanAnalytics,
   getUserShortUrls,
+  isOwnerAdminEmail,
   listUserLogos,
   setDefaultUserLogo,
   uploadUserLogo,
@@ -58,6 +59,7 @@ async function readImageDimensions(file: File): Promise<{ width: number; height:
 const SettingsPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
   const currentPlan = profile?.plan ?? "free";
+  const isOwnerAdmin = isOwnerAdminEmail(user?.email);
   const isPaidUser = isPaidPlan(currentPlan);
   const isSubscriptionUser = isSubscriptionPlan(currentPlan);
   const planLimits = getPlanLimits(currentPlan);
@@ -286,6 +288,21 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
               )}
             </IonCardContent>
           </IonCard>
+
+          {isOwnerAdmin && (
+            <IonCard className="settings-card settings-card--admin">
+              <IonCardHeader>
+                <IonCardTitle>Owner Admin</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <p>Open the owner controls to review all accounts, subscription states, and moderation actions.</p>
+                <IonButton onClick={() => history.push("/admin")}> 
+                  <IonIcon slot="start" icon={shieldCheckmarkOutline} />
+                  Open Admin Panel
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
+          )}
 
           <div className="settings-grid">
             <IonCard className="settings-card">

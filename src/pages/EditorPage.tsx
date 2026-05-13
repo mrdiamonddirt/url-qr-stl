@@ -62,7 +62,7 @@ import {
   uploadUserLogo,
   updateProfileRedirectMode,
 } from "../lib/supabaseClient";
-import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, isPaidPlan } from "../lib/plans";
+import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, getUpgradeCreditLabel, isPaidPlan } from "../lib/plans";
 import { CheckoutTargetPlan, ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
@@ -93,7 +93,7 @@ type DimensionUnit = "mm" | "cm" | "in";
 const FREE_SCAN_LIMIT = 20;
 const FREE_TAG_LIMIT = 3;
 const DEFAULT_QR_COLOR = "#111111";
-const TRANSPARENT_QR_BACKGROUND = "rgba(0,0,0,0)";
+const TRANSPARENT_QR_BACKGROUND = "#00000000";
 const LOGO_MAX_BYTES = 1_048_576;
 const LOGO_MIN_DIM = 64;
 const LOGO_MAX_DIM = 1024;
@@ -1513,13 +1513,37 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
               </IonCardHeader>
               <IonCardContent>
                 {user && !isPremiumPlan && (
-                  <IonCard color="warning" style={{ marginBottom: 12 }}>
-                    <IonCardContent>
-                      <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
-                      {" "}
-                      <IonButton size="small" onClick={() => void handleUpgrade()}>
-                        Upgrade - {formatPlanPrice(selectedUpgradePlan)}
-                      </IonButton>
+                  <IonCard className="recent-upsell-card" style={{ marginBottom: 12 }}>
+                    <IonCardContent className="editor-upsell-shell editor-upsell-shell--recent">
+                      <p className="editor-upsell-summary">
+                        <strong>Free plan:</strong> {supabaseHistory.length} / {FREE_TAG_LIMIT} tags used. Each link allows {FREE_SCAN_LIMIT} scans.
+                      </p>
+                      <div className="editor-upsell-row">
+                        <div className="editor-upsell-controls">
+                          {!!allowedUpgradeTargets.length && (
+                            <div className="editor-upsell-picker editor-upsell-picker--inline">
+                              {allowedUpgradeTargets.map((target) => (
+                                <IonButton
+                                  key={target}
+                                  size="small"
+                                  fill={selectedUpgradePlan === target ? "solid" : "outline"}
+                                  onClick={() => setSelectedUpgradePlan(target)}
+                                >
+                                  {target === "premium_monthly" ? "Monthly" : target === "premium_yearly" ? "Yearly" : "Lifetime"}
+                                </IonButton>
+                              ))}
+                            </div>
+                          )}
+                          {!!getUpgradeCreditLabel(currentPlan, selectedUpgradePlan) && (
+                            <p className="editor-upsell-credit">
+                              <strong>Credit:</strong> {getUpgradeCreditLabel(currentPlan, selectedUpgradePlan)}
+                            </p>
+                          )}
+                        </div>
+                        <IonButton size="small" className="editor-upsell-cta" onClick={() => void handleUpgrade()}>
+                          Upgrade - {formatPlanPrice(selectedUpgradePlan)}
+                        </IonButton>
+                      </div>
                     </IonCardContent>
                   </IonCard>
                 )}
@@ -1719,9 +1743,41 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     </div>
                   </div>
                   {!isPremiumPlan && (
-                    <IonButton expand="block" onClick={() => void handleUpgrade()}>
-                      Upgrade - {formatPlanPrice(selectedUpgradePlan)}
-                    </IonButton>
+                    <div className="editor-upsell-shell editor-upsell-shell--pricing">
+                      <div className="editor-upsell-row">
+                        <div className="editor-upsell-controls">
+                          {!!allowedUpgradeTargets.length && (
+                            <div className="editor-plan-card-grid" role="group" aria-label="Choose a premium plan">
+                              {allowedUpgradeTargets.map((target) => (
+                                <button
+                                  type="button"
+                                  key={target}
+                                  className="editor-plan-card"
+                                  onClick={() => {
+                                    void handleUpgrade(target);
+                                  }}
+                                >
+                                  <span className="editor-plan-card__name">
+                                    {target === "premium_monthly" ? "Monthly" : target === "premium_yearly" ? "Yearly" : "Lifetime"}
+                                  </span>
+                                  <span className="editor-plan-card__price">{formatPlanPrice(target)}</span>
+                                  <span className="editor-plan-card__meta">
+                                    {target === "premium_monthly"
+                                      ? "Flexible"
+                                      : target === "premium_yearly"
+                                        ? "Best value"
+                                        : "One-time"}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {!!getUpgradeCreditLabel(currentPlan, selectedUpgradePlan) && (
+                            <p className="editor-upsell-credit"><strong>Credit:</strong> {getUpgradeCreditLabel(currentPlan, selectedUpgradePlan)}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </IonCardContent>
               </IonCard>

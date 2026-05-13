@@ -11,7 +11,7 @@ type RouteParams = { code: string };
 
 const RedirectPage: React.FC = () => {
   const { code } = useParams<RouteParams>();
-  const [error, setError] = useState<"not_found" | "limit_reached" | null>(null);
+  const [error, setError] = useState<"not_found" | "limit_reached" | "banned" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +29,11 @@ const RedirectPage: React.FC = () => {
 
       if (result.error === "limit_reached") {
         setError("limit_reached");
+        return;
+      }
+
+      if (result.error === "banned") {
+        setError("banned");
         return;
       }
 
@@ -66,6 +71,34 @@ const RedirectPage: React.FC = () => {
               </IonButton>
               <IonButton href="https://mrdiamonddirt.github.io/url-qr-stl/" expand="block" fill="outline">
                 Learn More
+              </IonButton>
+            </div>
+          </section>
+        </IonContent>
+      </IonPage>
+    );
+  }
+
+  if (error === "banned") {
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const appHomeHref = `${window.location.origin}${base}/editor`;
+
+    return (
+      <IonPage>
+        <IonContent className="redirect-not-found">
+          <div className="redirect-not-found__backdrop" />
+          <section className="redirect-not-found__panel ion-padding">
+            <p className="redirect-not-found__eyebrow">Link Disabled</p>
+            <h1>This account is blocked from redirecting links.</h1>
+            <p>
+              The owner account for this short link is currently suspended. Contact support if you think this is a mistake.
+            </p>
+            <div className="redirect-not-found__actions">
+              <IonButton expand="block" routerLink="/terms">
+                Terms and policies
+              </IonButton>
+              <IonButton expand="block" fill="outline" href={appHomeHref}>
+                Back to URL 2 STL
               </IonButton>
             </div>
           </section>

@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
     line_items: [{ price: Deno.env.get("STRIPE_PRICE_ID")!, quantity: 1 }],
     success_url: `${origin}/editor?upgrade=success`,
     cancel_url: `${origin}/editor`,
+    allow_promotion_codes: true,
     subscription_data: {
       metadata: { supabase_user_id: user.id },
     },

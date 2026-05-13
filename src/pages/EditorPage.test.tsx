@@ -8,6 +8,14 @@ import { vi } from "vitest";
 import EditorPage from "./EditorPage";
 import { Profile } from "../types";
 
+vi.mock("../lib/qr", async () => {
+  const actual = await vi.importActual<typeof import("../lib/qr")>("../lib/qr");
+  return {
+    ...actual,
+    toQrDataUrl: vi.fn(async () => "data:image/png;base64,stub"),
+  };
+});
+
 function renderEditor(profile: Profile | null = null, user: User | null = null) {
   return render(
     <IonApp>
@@ -55,22 +63,19 @@ describe("EditorPage template picker", () => {
   test("shows direct link as locked for free accounts", () => {
     renderEditor();
 
-    expect(screen.getByText("Direct Link")).toBeInTheDocument();
+    expect(screen.getByText("Direct")).toBeInTheDocument();
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Locked");
   });
 
-  test("prompts free users to upgrade when they try direct link", async () => {
+  test("opens the plan overlay for free users when they try direct link", async () => {
     const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     renderEditor();
 
     await user.click(screen.getByLabelText("Direct link toggle"));
 
-    expect(confirmSpy).toHaveBeenCalled();
+    expect(screen.getByText("Direct Link requires Premium")).toBeInTheDocument();
     expect(screen.getByText("Direct Link is a Premium feature.")).toBeInTheDocument();
-
-    confirmSpy.mockRestore();
   });
 
   test("defaults direct link to off for premium accounts", () => {
@@ -89,8 +94,42 @@ describe("EditorPage template picker", () => {
     const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
     renderEditor(premiumProfile, premiumUser);
 
-    expect(screen.getByText("Direct Link")).toBeInTheDocument();
+    expect(screen.getByText("Direct")).toBeInTheDocument();
     expect(screen.getByTestId("instant-redirect-state")).toHaveTextContent("Off");
+  });
+
+  test("shows import-step controls for QR generation", () => {
+    renderEditor();
+
+    expect(screen.getByPlaceholderText("https://example.com/page")).toBeInTheDocument();
+    expect(screen.getByText(/^Generate QR$|^Re-render QR$/i)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /1 Import URL/i })).toBeInTheDocument();
+  });
+
+  test("loads a saved QR from recent tags", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "url-qr-stl.short-urls",
+      JSON.stringify([
+        {
+          id: "saved-1",
+          code: "ABC1234",
+          originalUrl: "https://example.com/saved",
+          shortUrl: "https://short/ABC1234",
+          templateId: "no-border",
+          templateValues: {},
+          qrType: "standard",
+          createdAt: new Date().toISOString(),
+        },
+      ])
+    );
+
+    renderEditor();
+
+    const loadButtons = await screen.findAllByRole("button", { name: /Load previous tag/i });
+    await user.click(loadButtons[0]);
+
+    expect(await screen.findByText(/Loaded tag ABC1234\./i)).toBeInTheDocument();
   });
 
   test("shows pending state when premium direct link is toggled", async () => {
@@ -157,29 +196,10 @@ describe("EditorPage template picker", () => {
     expect(await screen.findByRole("button", { name: "Load previous tag ZZZ9876" })).toBeInTheDocument();
   });
 
-  test("shows Frame QR as locked (Premium) for free users", () => {
+  test("shows default QR guidance for free users", () => {
     renderEditor();
 
-    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
-    expect(qrTypeSelect).toBeInTheDocument();
-
-    const frameQrOption = screen.getByRole("option", { name: /Frame QR \(Premium\)/ });
-    expect(frameQrOption).toHaveAttribute("disabled");
-  });
-
-  test("prompts free users to upgrade when they try to select Frame QR", async () => {
-    const user = userEvent.setup();
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-
-    renderEditor();
-
-    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
-    await user.click(qrTypeSelect);
-
-    const frameQrOption = screen.getByRole("option", { name: /Frame QR \(Premium\)/ });
-    expect(frameQrOption).toHaveAttribute("disabled");
-
-    confirmSpy.mockRestore();
+    expect(screen.getByText(/Balanced default for most tags\./i)).toBeInTheDocument();
   });
 
   test("allows premium users to select Frame QR", () => {
@@ -198,11 +218,7 @@ describe("EditorPage template picker", () => {
     const premiumUser = { id: "test-user", email: "premium@example.com" } as unknown as User;
     renderEditor(premiumProfile, premiumUser);
 
-    const qrTypeSelect = screen.getByRole("combobox", { name: "QR type" });
-    expect(qrTypeSelect).toBeInTheDocument();
-
-    const frameQrOption = screen.queryByRole("option", { name: /Frame QR \(Premium\)/ });
-    const standardFrameQrOption = screen.getByRole("option", { name: "Frame QR" });
-    expect(standardFrameQrOption).not.toHaveAttribute("disabled");
+    expect(screen.getByText(/Balanced default for most tags\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/available on Premium/i)).not.toBeInTheDocument();
   });
 });

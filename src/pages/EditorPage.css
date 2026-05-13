@@ -314,6 +314,100 @@
   color: #8bf0cb;
 }
 
+.direct-upgrade-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 14, 24, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 130;
+}
+
+.direct-upgrade-overlay-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.direct-upgrade-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  transform: translate(-50%, -48%) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid rgba(31, 76, 118, 0.18);
+  border-radius: 20px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(252, 254, 255, 0.98) 0%, rgba(241, 248, 255, 0.98) 100%);
+  box-shadow: 0 28px 60px rgba(8, 19, 31, 0.28);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  z-index: 135;
+  display: grid;
+  gap: 10px;
+}
+
+.direct-upgrade-overlay.is-open {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.direct-upgrade-overlay__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.direct-upgrade-overlay__kicker {
+  margin: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4f6983;
+  font-weight: 800;
+}
+
+.direct-upgrade-overlay__header h3 {
+  margin: 4px 0 0;
+  font-size: 1.06rem;
+  color: #1d3752;
+}
+
+.direct-upgrade-overlay__close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(27, 76, 120, 0.12);
+  color: #1d3f61;
+  cursor: pointer;
+}
+
+.direct-upgrade-overlay__close ion-icon {
+  font-size: 1.1rem;
+}
+
+.direct-upgrade-overlay__copy {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #45607b;
+}
+
+.direct-upgrade-overlay__credit {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #2b4865;
+}
+
 .account-drawer-backdrop {
   position: fixed;
   top: var(--editor-header-height, 88px);
@@ -2551,8 +2645,43 @@
     padding: 8px;
   }
 
+  .timeline-rail__tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .template-button {
+    min-width: 120px;
+    max-width: 120px;
+    min-height: 132px;
+  }
+
+  .template-card-preview {
+    width: 102px;
+    height: 102px;
+  }
+
   .preview-box {
     min-height: 180px;
+  }
+
+  .preview-box--import {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .import-tools {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    margin-top: auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .import-color-picker {
+    width: 100%;
+    justify-content: center;
   }
 
   .editor-card--preview-focus .timeline-stage-shell .preview-box {
@@ -2685,14 +2814,23 @@
   }
 
   .template-button {
-    min-width: 116px;
-    max-width: 116px;
+    min-width: 112px;
+    max-width: 112px;
     min-height: 126px;
   }
 
   .template-card-preview {
-    width: 94px;
-    height: 94px;
+    width: 88px;
+    height: 88px;
+  }
+
+  .direct-upgrade-overlay {
+    width: calc(100vw - 12px);
+    padding: 12px;
+  }
+
+  .direct-upgrade-overlay__header h3 {
+    font-size: 0.96rem;
   }
 
   .history-card {

@@ -100,6 +100,7 @@ const LOGO_MAX_DIM = 1024;
 const LOGO_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DEFAULT_FRAME_EMOJI = "🌊";
 const CTA_SIZE_SCALE = 1;
+const PENDING_CHECKOUT_PLAN_KEY = "url-qr-stl.pending-upgrade-plan";
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
   impact: "Impact",
@@ -113,6 +114,18 @@ const DIMENSION_UNIT_OPTIONS: Array<{ value: DimensionUnit; label: string; mmFac
   { value: "cm", label: "Centimeters (cm)", mmFactor: 10 },
   { value: "in", label: "Inches (in)", mmFactor: 25.4 },
 ];
+
+function getPlanDisplayName(plan: CheckoutTargetPlan): string {
+  return plan === "premium_monthly" ? "Monthly" : plan === "premium_yearly" ? "Yearly" : "Lifetime";
+}
+
+function getPlanMeta(plan: CheckoutTargetPlan): string {
+  return plan === "premium_monthly" ? "Flexible" : plan === "premium_yearly" ? "Best value" : "One-time";
+}
+
+function isCheckoutTargetPlan(value: string): value is CheckoutTargetPlan {
+  return value === "premium_monthly" || value === "premium_yearly" || value === "lifetime";
+}
 
 function getDimensionUnitFactor(unit: DimensionUnit): number {
   return DIMENSION_UNIT_OPTIONS.find((option) => option.value === unit)?.mmFactor ?? 1;
@@ -291,8 +304,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [logoUploadBusy, setLogoUploadBusy] = useState(false);
   const [logoDeleteBusyId, setLogoDeleteBusyId] = useState<string | null>(null);
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<CheckoutTargetPlan>("premium_monthly");
+  const [directUpgradeOverlayOpen, setDirectUpgradeOverlayOpen] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_FRAME_EMOJI);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const hasHandledPendingCheckoutRef = useRef(false);
 
   const toggleEmojiPicker = () => {
     setIsEmojiPickerOpen((prev) => !prev);
@@ -369,6 +384,29 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setSavedRedirectMode("interstitial");
     setPendingRedirectMode("interstitial");
   }, [isPremiumPlan, profile?.redirect_mode]);
+
+  useEffect(() => {
+    if (!user || hasHandledPendingCheckoutRef.current) {
+      return;
+    }
+
+    const pendingPlan = localStorage.getItem(PENDING_CHECKOUT_PLAN_KEY);
+    if (!pendingPlan) {
+      hasHandledPendingCheckoutRef.current = true;
+      return;
+    }
+
+    if (!isCheckoutTargetPlan(pendingPlan)) {
+      localStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
+      hasHandledPendingCheckoutRef.current = true;
+      return;
+    }
+
+    localStorage.removeItem(PENDING_CHECKOUT_PLAN_KEY);
+    hasHandledPendingCheckoutRef.current = true;
+    setSelectedUpgradePlan(pendingPlan);
+    void handleUpgrade(pendingPlan);
+  }, [user]);
 
   const filteredSupabaseHistory = useMemo(() => {
     const query = tagSearch.trim().toLowerCase();
@@ -912,7 +950,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setComposedPreviewUrl("");
       setModelPreviewReady(false);
       setIsUrlEditorOpen(false);
-      await moveToStage("compose");
+      await moveToStage("import");
 
       if (supabase && user) {
         // Refresh Supabase history to include the new entry
@@ -981,7 +1019,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setComposedPreviewUrl("");
     setModelPreviewReady(false);
     setIsUrlEditorOpen(false);
-    await moveToStage("compose");
+    await moveToStage("import");
 
     try {
       setQrDataUrl(
@@ -1175,6 +1213,20 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
   }
 
+  async function handleDirectUpgradeSelect(targetPlan: CheckoutTargetPlan) {
+    setSelectedUpgradePlan(targetPlan);
+    setDirectUpgradeOverlayOpen(false);
+
+    if (!user) {
+      localStorage.setItem(PENDING_CHECKOUT_PLAN_KEY, targetPlan);
+      localStorage.setItem("url-qr-stl.return-to", "/editor");
+      history.push("/auth");
+      return;
+    }
+
+    await handleUpgrade(targetPlan);
+  }
+
   function toggleAccountPanel() {
     setAccountPanelOpen((current) => !current);
   }
@@ -1182,14 +1234,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   async function handleRedirectModeToggle(checked: boolean) {
     if (!isPremiumPlan) {
       setError("Direct Link is a Premium feature.");
-      if (window.confirm("Direct Link is a Premium feature. Upgrade now?")) {
-        if (user) {
-          await handleUpgrade();
-        } else {
-          localStorage.setItem("url-qr-stl.return-to", "/editor");
-          history.push("/auth");
-        }
-      }
+      setDirectUpgradeOverlayOpen(true);
       setPendingRedirectMode("interstitial");
       return;
     }
@@ -1303,7 +1348,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                 <span>Dashboard</span>
               </button>
               <div className={`toolbar-redirect-control ${canToggleInstantRedirect ? "" : "is-locked"}`}>
-                <span className="toolbar-redirect-control__label">Direct Link</span>
+                <span className="toolbar-redirect-control__label">Direct</span>
                 <IonToggle
                   checked={pendingRedirectMode === "instant"}
                   onIonChange={(e) => {
@@ -1346,6 +1391,60 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         </IonToolbar>
       </IonHeader>
       <IonContent className="editor-shell">
+        {directUpgradeOverlayOpen && (
+          <>
+            <div
+              className="direct-upgrade-overlay-backdrop is-open"
+              onClick={() => setDirectUpgradeOverlayOpen(false)}
+              aria-hidden="true"
+            />
+            <section
+              className="direct-upgrade-overlay is-open"
+              aria-label="Choose a premium plan for Direct Link"
+            >
+              <div className="direct-upgrade-overlay__header">
+                <div>
+                  <p className="direct-upgrade-overlay__kicker">Premium unlock</p>
+                  <h3>Direct Link requires Premium</h3>
+                </div>
+                <button
+                  type="button"
+                  className="direct-upgrade-overlay__close"
+                  onClick={() => setDirectUpgradeOverlayOpen(false)}
+                  aria-label="Close premium plans"
+                >
+                  <IonIcon icon={closeCircleOutline} />
+                </button>
+              </div>
+              <p className="direct-upgrade-overlay__copy">
+                Pick a plan to unlock Direct Link routing and premium analytics.
+              </p>
+              {!!allowedUpgradeTargets.length && (
+                <div className="editor-plan-card-grid" role="group" aria-label="Choose a premium plan">
+                  {allowedUpgradeTargets.map((target) => (
+                    <button
+                      type="button"
+                      key={target}
+                      className="editor-plan-card"
+                      onClick={() => {
+                        void handleDirectUpgradeSelect(target);
+                      }}
+                    >
+                      <span className="editor-plan-card__name">{getPlanDisplayName(target)}</span>
+                      <span className="editor-plan-card__price">{formatPlanPrice(target)}</span>
+                      <span className="editor-plan-card__meta">{getPlanMeta(target)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!!getUpgradeCreditLabel(currentPlan, selectedUpgradePlan) && (
+                <p className="direct-upgrade-overlay__credit">
+                  <strong>Credit:</strong> {getUpgradeCreditLabel(currentPlan, selectedUpgradePlan)}
+                </p>
+              )}
+            </section>
+          </>
+        )}
         <div className={`account-drawer-backdrop ${accountPanelOpen ? "is-open" : ""}`} onClick={() => setAccountPanelOpen(false)} />
         <aside className={`account-drawer ${accountPanelOpen ? "is-open" : ""}`} aria-hidden={!accountPanelOpen}>
           <div className="account-drawer__header">
@@ -1758,16 +1857,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                   }}
                                 >
                                   <span className="editor-plan-card__name">
-                                    {target === "premium_monthly" ? "Monthly" : target === "premium_yearly" ? "Yearly" : "Lifetime"}
+                                    {getPlanDisplayName(target)}
                                   </span>
                                   <span className="editor-plan-card__price">{formatPlanPrice(target)}</span>
-                                  <span className="editor-plan-card__meta">
-                                    {target === "premium_monthly"
-                                      ? "Flexible"
-                                      : target === "premium_yearly"
-                                        ? "Best value"
-                                        : "One-time"}
-                                  </span>
+                                  <span className="editor-plan-card__meta">{getPlanMeta(target)}</span>
                                 </button>
                               ))}
                             </div>

@@ -34,6 +34,10 @@ type PerUserDraft = {
   downgradeTiming: AdminDowngradeTiming;
 };
 
+function normalizeAdminTargetPlan(plan: Plan): Plan {
+  return plan === "premium" ? "premium_monthly" : plan;
+}
+
 const AdminPage: React.FC<Props> = ({ user }) => {
   const history = useHistory();
   const [metrics, setMetrics] = useState<Awaited<ReturnType<typeof getAdminDashboardMetrics>> | null>(null);
@@ -82,7 +86,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
           for (const row of usersData.users) {
             if (!next[row.id]) {
               next[row.id] = {
-                targetPlan: row.plan,
+                targetPlan: normalizeAdminTargetPlan(row.plan),
                 downgradeTiming: "immediate",
               };
             }
@@ -139,12 +143,13 @@ const AdminPage: React.FC<Props> = ({ user }) => {
 
   async function handleApplyPlan(row: AdminUserRow) {
     const draft = draftsByUser[row.id] ?? { targetPlan: row.plan, downgradeTiming: "immediate" as AdminDowngradeTiming };
+    const targetPlan = normalizeAdminTargetPlan(draft.targetPlan);
 
     setBusyUserId(row.id);
     setStatus("");
     setError("");
     try {
-      const result = await updateAdminUserPlan(row.id, draft.targetPlan, draft.downgradeTiming);
+      const result = await updateAdminUserPlan(row.id, targetPlan, draft.downgradeTiming);
       setStatus(`${row.email}: ${result.message}`);
       await refreshData();
     } catch (err) {
@@ -297,7 +302,8 @@ const AdminPage: React.FC<Props> = ({ user }) => {
                 {loading && <p>Loading users...</p>}
                 {!loading && !users.length && <p>No users found.</p>}
                 {users.map((row) => {
-                  const draft = draftsByUser[row.id] ?? { targetPlan: row.plan, downgradeTiming: "immediate" as AdminDowngradeTiming };
+                    const draft = draftsByUser[row.id] ?? { targetPlan: normalizeAdminTargetPlan(row.plan), downgradeTiming: "immediate" as AdminDowngradeTiming };
+                    const selectedTargetPlan = normalizeAdminTargetPlan(draft.targetPlan);
                   const rowBusy = busyUserId === row.id;
 
                   return (
@@ -324,7 +330,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
 
                       <div className="admin-user-row__actions">
                         <select
-                          value={draft.targetPlan}
+                          value={selectedTargetPlan}
                           onChange={(event) => setDraft(row.id, { targetPlan: event.target.value as Plan })}
                         >
                           <option value="free">Free</option>

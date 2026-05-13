@@ -54,6 +54,30 @@ function toPlan(value: string | null | undefined): Plan {
   return "free";
 }
 
+function normalizeAdminTargetPlan(value: string | null | undefined): Plan {
+  const plan = toPlan(value);
+  return plan === "premium" ? "premium_monthly" : plan;
+}
+
+function isMissingStripeResource(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const stripeError = error as { code?: string; message?: string };
+  return stripeError.code === "resource_missing" || /no such (subscription|customer)/i.test(stripeError.message ?? "");
+}
+
+function isMissingPaymentMethodError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const stripeError = error as { code?: string; message?: string };
+  return /no attached payment source|default payment method|payment method/i.test(stripeError.message ?? "")
+    || stripeError.code === "card_declined";
+}
+
 function isPaidPlan(plan: Plan): boolean {
   return plan !== "free";
 }
@@ -291,12 +315,23 @@ async function setUserPlan(
     .single();
 
   if (profileError || !profile) {
-    throw profileError ?? new Error("Profile not found.");
+    const profileMissing = !profileError || /no rows|pgrst116/i.test(profileError.message ?? "");
+    if (!profileMissing) {
+      throw profileError;
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from("profiles")
+      .insert({ id: body.targetUserId });
+
+    if (insertError) {
+      throw insertError;
+    }
   }
 
-  const subscriptionId = profile.stripe_subscription_id as string | null;
-  let customerId = profile.stripe_customer_id as string | null;
-  const targetPlan = toPlan(body.targetPlan);
+  let subscriptionId = profile?.stripe_subscription_id as string | null;
+  let customerId = profile?.stripe_customer_id as string | null;
+  const targetPlan = normalizeAdminTargetPlan(body.targetPlan);
   const baseUpdate: Record<string, unknown> = {
     plan: targetPlan,
     billing_cycle: toBillingCycle(targetPlan),
@@ -304,12 +339,43 @@ async function setUserPlan(
     cancel_at_period_end: false,
   };
 
+  async function ensureStripeCustomerId(): Promise<string> {
+    if (customerId) {
+      return customerId;
+    }
+
+    const userResult = await supabaseAdmin.auth.admin.getUserById(body.targetUserId);
+    if (userResult.error || !userResult.data.user?.email) {
+      throw userResult.error ?? new Error("Could not resolve user email for Stripe customer creation.");
+    }
+
+    const createdCustomer = await stripe.customers.create({ email: userResult.data.user.email });
+    customerId = createdCustomer.id;
+
+    const { error: customerSaveError } = await supabaseAdmin
+      .from("profiles")
+      .update({ stripe_customer_id: customerId })
+      .eq("id", body.targetUserId);
+
+    if (customerSaveError) {
+      throw customerSaveError;
+    }
+
+    return customerId;
+  }
+
   if (targetPlan === "free") {
     if (subscriptionId) {
       if (downgradeTiming === "period_end") {
-        await stripe.subscriptions.update(subscriptionId, {
-          cancel_at_period_end: true,
-        });
+        try {
+          await stripe.subscriptions.update(subscriptionId, {
+            cancel_at_period_end: true,
+          });
+        } catch (error) {
+          if (!isMissingStripeResource(error)) {
+            throw error;
+          }
+        }
 
         const { error } = await supabaseAdmin
           .from("profiles")
@@ -328,14 +394,21 @@ async function setUserPlan(
         };
       }
 
-      const cancelled = await stripe.subscriptions.cancel(subscriptionId);
+      try {
+        const cancelled = await stripe.subscriptions.cancel(subscriptionId);
+        baseUpdate.subscription_ends_at = cancelled.ended_at
+          ? new Date(cancelled.ended_at * 1000).toISOString()
+          : new Date().toISOString();
+        baseUpdate.canceled_at = new Date().toISOString();
+        baseUpdate.plan_override_source = "admin_stripe";
+      } catch (error) {
+        if (!isMissingStripeResource(error)) {
+          throw error;
+        }
+      }
+
       baseUpdate.stripe_subscription_id = null;
-      baseUpdate.subscription_ends_at = cancelled.ended_at
-        ? new Date(cancelled.ended_at * 1000).toISOString()
-        : new Date().toISOString();
-      baseUpdate.canceled_at = new Date().toISOString();
       baseUpdate.cancel_at_period_end = false;
-      baseUpdate.plan_override_source = "admin_stripe";
     }
 
     const { error } = await supabaseAdmin
@@ -358,58 +431,61 @@ async function setUserPlan(
       throw new Error(`Missing Stripe price configuration for ${targetPlan}.`);
     }
 
-    if (!customerId) {
-      const userResult = await supabaseAdmin.auth.admin.getUserById(body.targetUserId);
-      if (userResult.error || !userResult.data.user?.email) {
-        throw userResult.error ?? new Error("Could not resolve user email for Stripe customer creation.");
-      }
-
-      const createdCustomer = await stripe.customers.create({ email: userResult.data.user.email });
-      customerId = createdCustomer.id;
-
-      const { error: customerSaveError } = await supabaseAdmin
-        .from("profiles")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", body.targetUserId);
-
-      if (customerSaveError) {
-        throw customerSaveError;
-      }
-    }
+    customerId = await ensureStripeCustomerId();
 
     if (subscriptionId) {
-      const existing = await stripe.subscriptions.retrieve(subscriptionId);
-      const itemId = existing.items.data[0]?.id;
-      if (!itemId) {
-        throw new Error("Subscription line item missing.");
+      try {
+        const existing = await stripe.subscriptions.retrieve(subscriptionId);
+        const itemId = existing.items.data[0]?.id;
+        if (!itemId) {
+          throw new Error("Subscription line item missing.");
+        }
+
+        const updated = await stripe.subscriptions.update(subscriptionId, {
+          cancel_at_period_end: false,
+          items: [{ id: itemId, price: targetPriceId }],
+          proration_behavior: downgradeTiming === "immediate" ? "create_prorations" : "none",
+        });
+
+        baseUpdate.subscription_ends_at = updated.current_period_end
+          ? new Date(updated.current_period_end * 1000).toISOString()
+          : null;
+        baseUpdate.cancel_at_period_end = false;
+        baseUpdate.canceled_at = null;
+        baseUpdate.stripe_subscription_id = subscriptionId;
+        baseUpdate.plan_override_source = "admin_stripe";
+      } catch (error) {
+        if (!isMissingStripeResource(error)) {
+          throw error;
+        }
+
+        subscriptionId = null;
       }
-
-      const updated = await stripe.subscriptions.update(subscriptionId, {
-        cancel_at_period_end: false,
-        items: [{ id: itemId, price: targetPriceId }],
-        proration_behavior: downgradeTiming === "immediate" ? "create_prorations" : "none",
-      });
-
-      baseUpdate.subscription_ends_at = updated.current_period_end
-        ? new Date(updated.current_period_end * 1000).toISOString()
-        : null;
-      baseUpdate.cancel_at_period_end = false;
-      baseUpdate.canceled_at = null;
-      baseUpdate.stripe_subscription_id = subscriptionId;
-      baseUpdate.plan_override_source = "admin_stripe";
     } else {
-      const createdSubscription = await stripe.subscriptions.create({
-        customer: customerId,
-        items: [{ price: targetPriceId }],
-      });
+      try {
+        const createdSubscription = await stripe.subscriptions.create({
+          customer: customerId,
+          items: [{ price: targetPriceId }],
+        });
 
-      baseUpdate.stripe_subscription_id = createdSubscription.id;
-      baseUpdate.subscription_ends_at = createdSubscription.current_period_end
-        ? new Date(createdSubscription.current_period_end * 1000).toISOString()
-        : null;
-      baseUpdate.cancel_at_period_end = false;
-      baseUpdate.canceled_at = null;
-      baseUpdate.plan_override_source = "admin_stripe";
+        baseUpdate.stripe_subscription_id = createdSubscription.id;
+        baseUpdate.subscription_ends_at = createdSubscription.current_period_end
+          ? new Date(createdSubscription.current_period_end * 1000).toISOString()
+          : null;
+        baseUpdate.cancel_at_period_end = false;
+        baseUpdate.canceled_at = null;
+        baseUpdate.plan_override_source = "admin_stripe";
+      } catch (error) {
+        if (!isMissingPaymentMethodError(error)) {
+          throw error;
+        }
+
+        baseUpdate.stripe_subscription_id = null;
+        baseUpdate.subscription_ends_at = null;
+        baseUpdate.cancel_at_period_end = false;
+        baseUpdate.canceled_at = null;
+        baseUpdate.plan_override_source = "admin_manual";
+      }
     }
 
     const { error } = await supabaseAdmin
@@ -422,16 +498,26 @@ async function setUserPlan(
     return {
       ok: true,
       mode: "immediate",
-      message: `Plan updated to ${targetPlan}.`,
+      message: baseUpdate.stripe_subscription_id
+        ? `Plan updated to ${targetPlan}.`
+        : `Plan updated to ${targetPlan} without a Stripe subscription yet.`,
     };
   }
 
   if (targetPlan === "lifetime") {
+    customerId = await ensureStripeCustomerId();
+
     if (subscriptionId) {
       if (downgradeTiming === "period_end") {
-        await stripe.subscriptions.update(subscriptionId, {
-          cancel_at_period_end: true,
-        });
+        try {
+          await stripe.subscriptions.update(subscriptionId, {
+            cancel_at_period_end: true,
+          });
+        } catch (error) {
+          if (!isMissingStripeResource(error)) {
+            throw error;
+          }
+        }
 
         const { error } = await supabaseAdmin
           .from("profiles")
@@ -440,7 +526,13 @@ async function setUserPlan(
             plan_override_source: "admin_stripe",
           })
           .eq("id", body.targetUserId);
-
+        try {
+          await stripe.subscriptions.cancel(subscriptionId);
+        } catch (error) {
+          if (!isMissingStripeResource(error)) {
+            throw error;
+          }
+        }
         if (error) throw error;
 
         return {

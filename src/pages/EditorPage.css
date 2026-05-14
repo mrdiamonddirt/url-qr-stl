@@ -2684,6 +2684,23 @@
   .preview-box--import {
     padding: 12px;
     gap: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .preview-box--import > img {
+    order: 1;
+    margin-top: 16px;
+  }
+
+  .preview-corner-edit {
+    position: static;
+    top: auto;
+    right: auto;
+    order: 2;
+    margin-top: 2px;
   }
 
   .import-tools {
@@ -2691,7 +2708,9 @@
     left: auto;
     right: auto;
     bottom: auto;
-    margin-top: auto;
+    order: 3;
+    width: 100%;
+    margin-top: 0;
     flex-wrap: wrap;
     justify-content: center;
   }
@@ -2699,6 +2718,17 @@
   .import-color-picker {
     width: 100%;
     justify-content: center;
+  }
+
+  .stage-next-btn--import.stage-next-btn--floating {
+    position: static;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    order: 4;
+    width: 100%;
+    margin-top: 2px;
+    box-shadow: none;
   }
 
   .editor-card--preview-focus .timeline-stage-shell .preview-box {
@@ -2763,6 +2793,16 @@
     font-size: 0.52rem;
     letter-spacing: 0.02em;
     text-transform: uppercase;
+
+  }
+
+  .import-tools {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .import-save-btn {
+    width: 100%;
   }
 
   .toolbar-redirect-control__state {

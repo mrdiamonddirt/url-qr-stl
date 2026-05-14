@@ -50,3 +50,14 @@ export function buildHashRouteFromSpaRedirect(
 
   return buildHashRouteFromPathname(parsed.pathname || "/", parsed.search || "", baseUrl);
 }
+
+export function shouldPrioritizePathnameShortLink(
+  pathnameHashTarget: string | null,
+  currentHashPath: string,
+): boolean {
+  const targetHashPath = pathnameHashTarget
+    ? (pathnameHashTarget.split("#")[1]?.split("?")[0] || "/")
+    : "/";
+
+  return Boolean(pathnameHashTarget && targetHashPath.startsWith("/s/") && currentHashPath !== targetHashPath);
+}

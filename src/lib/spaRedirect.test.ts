@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { buildHashRouteFromPathname, buildHashRouteFromSpaRedirect } from "./spaRedirect";
+import {
+  buildHashRouteFromPathname,
+  buildHashRouteFromSpaRedirect,
+  shouldPrioritizePathnameShortLink,
+} from "./spaRedirect";
 
 describe("buildHashRouteFromSpaRedirect", () => {
   test("maps root-host short links to hash routes", () => {
@@ -28,5 +32,15 @@ describe("buildHashRouteFromPathname", () => {
 
   test("returns null when pathname does not belong to configured basename", () => {
     expect(buildHashRouteFromPathname("/s/nViUhCA", "", "/url-qr-stl/")).toBeNull();
+  });
+});
+
+describe("shouldPrioritizePathnameShortLink", () => {
+  test("forces short-link hash when stale editor hash is present", () => {
+    expect(shouldPrioritizePathnameShortLink("/#/s/nViUhCA", "/editor")).toBe(true);
+  });
+
+  test("does not force when hash already matches short-link route", () => {
+    expect(shouldPrioritizePathnameShortLink("/#/s/nViUhCA", "/s/nViUhCA")).toBe(false);
   });
 });

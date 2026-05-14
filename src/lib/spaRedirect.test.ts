@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { buildHashRouteFromSpaRedirect } from "./spaRedirect";
+import { buildHashRouteFromPathname, buildHashRouteFromSpaRedirect } from "./spaRedirect";
 
 describe("buildHashRouteFromSpaRedirect", () => {
   test("maps root-host short links to hash routes", () => {
@@ -18,5 +18,15 @@ describe("buildHashRouteFromSpaRedirect", () => {
 
   test("returns null for empty redirects", () => {
     expect(buildHashRouteFromSpaRedirect("   ", "/")).toBeNull();
+  });
+});
+
+describe("buildHashRouteFromPathname", () => {
+  test("maps direct pathname deep links for root deploys", () => {
+    expect(buildHashRouteFromPathname("/s/nViUhCA", "", "/")).toBe("/#/s/nViUhCA");
+  });
+
+  test("returns null when pathname does not belong to configured basename", () => {
+    expect(buildHashRouteFromPathname("/s/nViUhCA", "", "/url-qr-stl/")).toBeNull();
   });
 });

@@ -8,6 +8,30 @@ function normalizeBasePath(baseUrl: string): string {
   return withLeadingSlash.replace(/\/+$/, "");
 }
 
+export function buildHashRouteFromPathname(
+  pathname: string,
+  search: string,
+  baseUrl: string,
+): string | null {
+  const basePath = normalizeBasePath(baseUrl);
+  let routePath = (pathname || "/").trim() || "/";
+
+  if (basePath && routePath.startsWith(`${basePath}/`)) {
+    routePath = routePath.slice(basePath.length);
+  } else if (basePath && routePath === basePath) {
+    routePath = "/";
+  } else if (basePath) {
+    return null;
+  }
+
+  if (!routePath.startsWith("/")) {
+    routePath = `/${routePath}`;
+  }
+
+  const route = `${routePath}${search || ""}`;
+  return `${basePath}/#${route}`;
+}
+
 export function buildHashRouteFromSpaRedirect(
   spaRedirect: string,
   baseUrl: string,
@@ -24,19 +48,5 @@ export function buildHashRouteFromSpaRedirect(
     return null;
   }
 
-  const basePath = normalizeBasePath(baseUrl);
-  let routePath = parsed.pathname || "/";
-
-  if (basePath && routePath.startsWith(`${basePath}/`)) {
-    routePath = routePath.slice(basePath.length);
-  } else if (basePath && routePath === basePath) {
-    routePath = "/";
-  }
-
-  if (!routePath.startsWith("/")) {
-    routePath = `/${routePath}`;
-  }
-
-  const route = `${routePath}${parsed.search || ""}`;
-  return `${basePath}/#${route}`;
+  return buildHashRouteFromPathname(parsed.pathname || "/", parsed.search || "", baseUrl);
 }

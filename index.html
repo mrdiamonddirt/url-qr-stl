@@ -37,18 +37,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   </head>
   <body>
-    <!-- Restore path saved by 404.html for static-hosted SPA deep links -->
-    <script>
-      (function () {
-        var redirect = sessionStorage.getItem('spa_redirect');
-        if (redirect) {
-          sessionStorage.removeItem('spa_redirect');
-          // BASE is root for production and development.
-          var base = '';
-          window.history.replaceState(null, '', base + redirect);
-        }
-      })();
-    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

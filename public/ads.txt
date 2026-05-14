@@ -1,0 +1,3 @@
+# Replace pub-XXXXXXXXXXXXXXXX with your real AdSense publisher ID.
+# Keep exactly one google.com line once configured.
+google.com, pub-4751544211590589, DIRECT, f08c47fec0942fa0

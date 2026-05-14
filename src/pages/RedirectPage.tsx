@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { IonButton, IonContent, IonPage, IonSpinner, IonText } from "@ionic/react";
 import { useParams } from "react-router";
+import GoogleAdSlot from "../components/GoogleAdSlot";
 import { findShortUrlByCode } from "../lib/storage";
 import { recordScan } from "../lib/supabaseClient";
 import "./RedirectPage.css";
@@ -9,14 +10,31 @@ const SCAN_LIMIT = 20;
 
 type RouteParams = { code: string };
 
+function normalizeCode(rawCode: string | undefined): string | null {
+  if (!rawCode) return null;
+
+  try {
+    const decoded = decodeURIComponent(rawCode).trim().replace(/^\/+|\/+$/g, "");
+    return decoded.length > 0 ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 const RedirectPage: React.FC = () => {
-  const { code } = useParams<RouteParams>();
+  const { code: rawCode } = useParams<RouteParams>();
+  const code = normalizeCode(rawCode);
   const [error, setError] = useState<"not_found" | "limit_reached" | "banned" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function redirect() {
+      if (!code) {
+        setError("not_found");
+        return;
+      }
+
       // Try Supabase record_scan first (tracks counts + enforces limit)
       const result = await recordScan(code);
 
@@ -52,7 +70,9 @@ const RedirectPage: React.FC = () => {
 
   if (error === "limit_reached") {
     const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-    const editorHref = `${window.location.origin}${base}/editor`;
+    const subscribeHref = `${window.location.origin}${base}/settings?from=scan-limit&intent=subscribe`;
+    const createAnotherHref = `${window.location.origin}${base}/settings?from=scan-limit&intent=create&next=%2Feditor`;
+    const adUnitPath = import.meta.env.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH;
 
     return (
       <IonPage>
@@ -60,17 +80,23 @@ const RedirectPage: React.FC = () => {
           <div className="redirect-not-found__backdrop" />
           <section className="redirect-not-found__panel ion-padding">
             <p className="redirect-not-found__eyebrow">Scan Limit Reached</p>
-            <h1>Tag deactivated after {SCAN_LIMIT} free scans.</h1>
+            <h1>This QR redirect is paused after {SCAN_LIMIT} free scans.</h1>
             <p>
-              This QR tag has used all free scans. The owner needs to upgrade to a Premium
-              account to reactivate this link and unlock 10,000 monthly scans.
+              This link now goes through a clean hold page. Subscribe to reactivate this tag,
+              or start a new QR flow from settings.
             </p>
+            <GoogleAdSlot
+              className="redirect-not-found__ad-slot"
+              testId="blocked-through-ad-slot"
+              slotElementId="gam-scan-limit-slot"
+              adUnitPath={adUnitPath}
+            />
             <div className="redirect-not-found__actions">
-              <IonButton href={editorHref} expand="block" fill="solid">
-                Upgrade to Premium
+              <IonButton href={subscribeHref} expand="block" fill="solid">
+                Subscribe to Reactivate
               </IonButton>
-              <IonButton href="https://url2stl.com/" expand="block" fill="outline">
-                Learn More
+              <IonButton href={createAnotherHref} expand="block" fill="outline">
+                Make Another QR
               </IonButton>
             </div>
           </section>

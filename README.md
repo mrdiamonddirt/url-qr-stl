@@ -34,6 +34,16 @@ cp .env.example .env
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
+Optional ad monetization config (Google Ad Manager on scan-limit through page):
+
+- `VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH` (example: `/1234567/url2stl_scan_limit`)
+- `VITE_GAM_SCAN_LIMIT_SIZES` (optional, comma-separated, example: `300x250,336x280,320x50`)
+
+Ad account identity and verification:
+
+- `public/ads.txt` must include your AdSense publisher line for production.
+- Replace `pub-XXXXXXXXXXXXXXXX` in `public/ads.txt` with your real publisher id.
+
 4. Start dev server:
 
 ```bash
@@ -107,3 +117,16 @@ Optional secrets (if you want live Supabase config on Pages):
 - `VITE_SUPABASE_ANON_KEY`
 
 If those secrets are not set, the app still deploys and runs in placeholder/local mode.
+
+## Google ad setup checklist
+
+1. In Google AdSense, add and verify your site domain (`url2stl.com`).
+2. In Google Ad Manager, create an ad unit for the blocked scan-limit placement.
+3. Set `VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH` to that ad unit path.
+4. Set optional `VITE_GAM_SCAN_LIMIT_SIZES` if you want custom slot sizes.
+5. Update `public/ads.txt` with your real `pub-...` id and deploy.
+
+Notes:
+
+- You generally do not need Google Cloud Console for this GAM/AdSense web setup.
+- You do need the production URL in AdSense/GAM so Google can authorize serving on your domain.

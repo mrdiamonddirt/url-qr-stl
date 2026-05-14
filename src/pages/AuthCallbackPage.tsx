@@ -3,6 +3,16 @@ import { IonContent, IonPage, IonSpinner, IonText } from "@ionic/react";
 import { useHistory } from "react-router";
 import { supabase } from "../lib/supabaseClient";
 
+function getHashQueryParams(): URLSearchParams {
+  const hash = window.location.hash || "";
+  const queryStart = hash.indexOf("?");
+  if (queryStart === -1) {
+    return new URLSearchParams();
+  }
+
+  return new URLSearchParams(hash.slice(queryStart + 1));
+}
+
 const AuthCallbackPage: React.FC = () => {
   const history = useHistory();
   const [error, setError] = useState<string | null>(null);
@@ -30,10 +40,12 @@ const AuthCallbackPage: React.FC = () => {
           return;
         }
 
-        // Check if there's an auth code in search params (fallback for path-based redirects)
+        // OAuth params may arrive in `search` (path callback) or in hash query after SPA handoff.
         const searchParams = new URLSearchParams(window.location.search);
-        const code = searchParams.get("code");
-        const error_description = searchParams.get("error_description");
+        const hashParams = getHashQueryParams();
+        const code = searchParams.get("code") ?? hashParams.get("code");
+        const error_description =
+          searchParams.get("error_description") ?? hashParams.get("error_description");
         
         if (error_description) {
           const msg = `OAuth error: ${error_description}`;
@@ -47,7 +59,17 @@ const AuthCallbackPage: React.FC = () => {
         if (code) {
           debugLines.push(`Found auth code in URL, exchanging...`);
           console.log("[AuthCallback] Found auth code, exchanging for session");
-          // Auth code is present - Supabase should handle this automatically with detectSessionInUrl
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            const msg = `OAuth exchange failed: ${exchangeError.message}`;
+            debugLines.push(msg);
+            console.error("[AuthCallback]", msg);
+            setDebug(debugLines.join("\n"));
+            setError(msg);
+            return;
+          }
+
+          debugLines.push("Auth code exchanged successfully");
         }
 
         debugLines.push("[AuthCallback] Calling getSession()...");

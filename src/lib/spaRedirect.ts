@@ -28,6 +28,12 @@ export function buildHashRouteFromPathname(
     routePath = `/${routePath}`;
   }
 
+  // Keep route matching consistent with exact hash routes (e.g. /auth/callback).
+  // Static hosts may serve directory indexes as /path/ and preserve that trailing slash.
+  if (routePath.length > 1 && routePath.endsWith("/")) {
+    routePath = routePath.slice(0, -1);
+  }
+
   const route = `${routePath}${search || ""}`;
   return `${basePath}/#${route}`;
 }

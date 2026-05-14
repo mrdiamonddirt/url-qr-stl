@@ -14,6 +14,10 @@ describe("buildHashRouteFromSpaRedirect", () => {
     expect(buildHashRouteFromSpaRedirect("/s/nViUhCA?utm=qr", "/")).toBe("/#/s/nViUhCA?utm=qr");
   });
 
+  test("normalizes trailing slashes for auth callback URLs", () => {
+    expect(buildHashRouteFromSpaRedirect("/auth/callback/?code=abc123", "/")).toBe("/#/auth/callback?code=abc123");
+  });
+
   test("strips basename from path before building hash route", () => {
     expect(buildHashRouteFromSpaRedirect("/url-qr-stl/s/AbC1234", "/url-qr-stl/")).toBe(
       "/url-qr-stl/#/s/AbC1234",

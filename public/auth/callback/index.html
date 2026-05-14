@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Completing sign-in...</title>
+  <script>
+    // OAuth providers return to this path with query params (?code=...).
+    // Store the original callback URL so the SPA can restore it as a hash route.
+    (function () {
+      var path = window.location.pathname || '/';
+      var search = window.location.search || '';
+      var hash = window.location.hash || '';
+      sessionStorage.setItem('spa_redirect', path + search + hash);
+
+      // Support both root deployments and subpath deployments.
+      var appRoot = path.replace(/\/auth\/callback\/?$/, '/');
+      if (!appRoot) {
+        appRoot = '/';
+      }
+
+      window.location.replace(appRoot);
+    })();
+  </script>
+</head>
+<body></body>
+</html>

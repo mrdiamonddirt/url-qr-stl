@@ -57,6 +57,15 @@ export type StlParams = {
   qrType: QrCodeType;
 };
 
+export type PreviewMaterialType = "normal" | "matte" | "plastic" | "metallic";
+
+export type ModelPreviewOptions = {
+  qrColor?: string;
+  baseColor?: string;
+  qrMaterial?: PreviewMaterialType;
+  baseMaterial?: PreviewMaterialType;
+};
+
 export type ModelFormat = "stl" | "obj";
 
 export type ModelExportParams = StlParams & {

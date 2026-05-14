@@ -1,5 +1,5 @@
-import { BoxGeometry, BufferGeometry, Group, Material, Mesh, MeshNormalMaterial } from "three";
-import { StlParams } from "../types";
+import { BoxGeometry, BufferGeometry, Color, Group, Material, Mesh, MeshNormalMaterial, MeshStandardMaterial } from "three";
+import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
 import { buildQrMatrix } from "./qr";
 
 const DETAIL_SCALE: Record<StlParams["detail"], number> = {
@@ -43,10 +43,13 @@ type ModelDimensions = {
 type ModelBuildOptions = {
   dimensions?: ModelDimensions;
   baseMask?: GridMask;
+  baseMaterial?: Material;
+  moduleMaterial?: Material;
 };
 
 type TemplateModelGroupOptions = {
   mode?: "export" | "preview";
+  previewOptions?: ModelPreviewOptions;
 };
 
 type Run = {
@@ -130,6 +133,24 @@ function cropMaskToBounds(mask: GridMask, bounds: MaskBounds, padding = 0): Grid
   return { width, height, data };
 }
 
+function createMaterialFromOptions(type: PreviewMaterialType | undefined, color: string | undefined): Material {
+  if (!type || type === "normal") {
+    return new MeshNormalMaterial();
+  }
+  const mat = new MeshStandardMaterial({ color: new Color(color ?? "#aaaaaa") });
+  if (type === "matte") {
+    mat.roughness = 1;
+    mat.metalness = 0;
+  } else if (type === "plastic") {
+    mat.roughness = 0.4;
+    mat.metalness = 0;
+  } else if (type === "metallic") {
+    mat.roughness = 0.2;
+    mat.metalness = 0.8;
+  }
+  return mat;
+}
+
 function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: ModelBuildOptions): Group {
   const modelWidthMm = options?.dimensions?.widthMm ?? params.widthMm;
   const modelHeightMm = options?.dimensions?.heightMm ?? params.heightMm;
@@ -138,7 +159,8 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
   const moduleHeight = modelHeightMm / mask.height;
   const raisedDepth = Math.max(0.4, params.depthMm * detailScale * 0.7);
   const group = new Group();
-  const material = new MeshNormalMaterial();
+  const baseMaterial = options?.baseMaterial ?? new MeshNormalMaterial();
+  const moduleMaterial = options?.moduleMaterial ?? new MeshNormalMaterial();
   const geometryCache = new Map<string, BoxGeometry>();
 
   const getGeometry = (width: number, height: number, depth: number) => {
@@ -160,7 +182,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
       for (let y = 0; y < baseMask.height; y += 1) {
         const runs = collectRowRuns(baseMask, y);
         for (const run of runs) {
-          const baseVoxel = new Mesh(getGeometry(moduleWidth * run.length, moduleHeight, params.baseMm), material);
+          const baseVoxel = new Mesh(getGeometry(moduleWidth * run.length, moduleHeight, params.baseMm), baseMaterial);
 
           const xPos =
             -modelWidthMm / 2 +
@@ -172,7 +194,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
         }
       }
     } else {
-      const base = new Mesh(getGeometry(modelWidthMm, modelHeightMm, params.baseMm), material);
+      const base = new Mesh(getGeometry(modelWidthMm, modelHeightMm, params.baseMm), baseMaterial);
       base.position.set(0, 0, params.baseMm / 2);
       group.add(base);
     }
@@ -191,7 +213,7 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
         continue;
       }
 
-      const module = new Mesh(getGeometry(moduleWidth, moduleHeight, moduleDepth), material);
+      const module = new Mesh(getGeometry(moduleWidth, moduleHeight, moduleDepth), moduleMaterial);
 
       const xPos = -modelWidthMm / 2 + moduleWidth * x + moduleWidth / 2;
       const yPos = modelHeightMm / 2 - moduleHeight * y - moduleHeight / 2;
@@ -356,6 +378,12 @@ export async function createTemplateModelGroup(
   );
 
   const bounds = getMaskBounds(denoisedBaseMask);
+  const previewMaterials = options?.previewOptions
+    ? {
+        baseMaterial: createMaterialFromOptions(options.previewOptions.baseMaterial, options.previewOptions.baseColor),
+        moduleMaterial: createMaterialFromOptions(options.previewOptions.qrMaterial, options.previewOptions.qrColor),
+      }
+    : undefined;
   if (!bounds) {
     return createModelGroupFromGrid(
       {
@@ -363,7 +391,8 @@ export async function createTemplateModelGroup(
         height: sampleHeight,
         data: denoisedDetailMask.data,
       },
-      params
+      params,
+      previewMaterials
     );
   }
 
@@ -378,6 +407,7 @@ export async function createTemplateModelGroup(
       heightMm: params.heightMm * heightRatio,
     },
     baseMask: croppedBaseMask,
+    ...previewMaterials,
   });
 }
 

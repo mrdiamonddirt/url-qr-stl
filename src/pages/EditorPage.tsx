@@ -63,7 +63,7 @@ import {
   updateProfileRedirectMode,
 } from "../lib/supabaseClient";
 import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, getUpgradeCreditLabel, isPaidPlan } from "../lib/plans";
-import { CheckoutTargetPlan, ModelFormat, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
+import { CheckoutTargetPlan, ModelFormat, ModelPreviewOptions, PreviewMaterialType, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
 
@@ -280,6 +280,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [modelPreviewLoading, setModelPreviewLoading] = useState(false);
   const [modelFormat, setModelFormat] = useState<ModelFormat>("stl");
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
+  const [previewQrColor, setPreviewQrColor] = useState("#222222");
+  const [previewBaseColor, setPreviewBaseColor] = useState("#e8e8e8");
+  const [previewQrMaterial, setPreviewQrMaterial] = useState<PreviewMaterialType>("matte");
+  const [previewBaseMaterial, setPreviewBaseMaterial] = useState<PreviewMaterialType>("matte");
   const [dimensionUnit, setDimensionUnit] = useState<DimensionUnit>("mm");
   const [activeRailStage, setActiveRailStage] = useState<RailStage>("import");
   const [isUrlEditorOpen, setIsUrlEditorOpen] = useState(true);
@@ -348,6 +352,20 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     const segments = source.split(/[@.\s_-]+/).filter(Boolean);
     return segments.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "U2";
   }, [user?.email]);
+
+  const previewOptions: ModelPreviewOptions = useMemo(() => ({
+    qrColor: previewQrColor,
+    baseColor: previewBaseColor,
+    qrMaterial: previewQrMaterial,
+    baseMaterial: previewBaseMaterial,
+  }), [previewQrColor, previewBaseColor, previewQrMaterial, previewBaseMaterial]);
+
+  const handlePreviewOptionsChange = useCallback((opts: ModelPreviewOptions) => {
+    if (opts.qrColor !== undefined) setPreviewQrColor(opts.qrColor);
+    if (opts.baseColor !== undefined) setPreviewBaseColor(opts.baseColor);
+    if (opts.qrMaterial !== undefined) setPreviewQrMaterial(opts.qrMaterial);
+    if (opts.baseMaterial !== undefined) setPreviewBaseMaterial(opts.baseMaterial);
+  }, []);
 
   const railStageProgress = useMemo(() => {
     if (modelPreviewReady) {
@@ -2169,6 +2187,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               <ModelPreviewCanvas
                                 imageDataUrl={composedPreviewUrl}
                                 params={stlParams}
+                                previewOptions={previewOptions}
+                                onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}
                               />
                               {modelPreviewLoading && (
@@ -2204,6 +2224,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               <ModelPreviewCanvas
                                 imageDataUrl={composedPreviewUrl}
                                 params={stlParams}
+                                previewOptions={previewOptions}
+                                onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}
                               />
                               {modelPreviewLoading && (
@@ -2216,6 +2238,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           ) : (
                             <span>Complete render to unlock exports.</span>
                           )}
+                          <IonButton
+                            className="model-preview-mobile-export"
+                            color="secondary"
+                            disabled={!modelPreviewReady}
+                            onClick={handleDownloadModel}
+                          >
+                            {user ? `Export ${modelFormat.toUpperCase()}` : "Sign in to export"}
+                          </IonButton>
                         </div>
                         <IonItem className="format-item">
                           <IonLabel>Download format</IonLabel>
@@ -2225,15 +2255,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           </IonSelect>
                         </IonItem>
 
-                        <IonButton
-                          className="action-btn"
-                          expand="block"
-                          color="secondary"
-                          disabled={!modelPreviewReady}
-                          onClick={handleDownloadModel}
-                        >
-                          {user ? `Download ${modelFormat.toUpperCase()}` : "Sign in to download model"}
-                        </IonButton>
                       </>
                     )}
 

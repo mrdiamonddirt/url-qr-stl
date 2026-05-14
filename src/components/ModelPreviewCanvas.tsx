@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AmbientLight,
   Box3,
@@ -12,12 +12,14 @@ import {
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { StlParams } from "../types";
+import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
 import { createTemplateModelGroup, disposeQrModelGroup } from "../lib/modelGeometry";
 
 type Props = {
   imageDataUrl: string;
   params: StlParams;
+  previewOptions?: ModelPreviewOptions;
+  onPreviewOptionsChange?: (opts: ModelPreviewOptions) => void;
   onLoadingChange?: (isLoading: boolean) => void;
 };
 
@@ -80,11 +82,12 @@ const IconOrbit = () => (
   </svg>
 );
 
-const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, onLoadingChange }) => {
+const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, previewOptions, onPreviewOptionsChange, onLoadingChange }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const homeViewRef = useRef<HomeView | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(true);
 
   const panView = (dx: number, dy: number) => {
     const camera = cameraRef.current;
@@ -185,7 +188,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, onLoadingCh
     renderScene();
     onLoadingChange?.(true);
 
-    void createTemplateModelGroup(imageDataUrl, params, { mode: "preview" })
+    void createTemplateModelGroup(imageDataUrl, params, { mode: "preview", previewOptions })
       .then((group) => {
         if (!active) {
           disposeQrModelGroup(group);
@@ -253,47 +256,117 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, onLoadingCh
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [imageDataUrl, onLoadingChange, params]);
+  }, [imageDataUrl, onLoadingChange, params, previewOptions]);
 
   return (
     <div className="model-canvas-shell">
       <div className="model-canvas-host" ref={hostRef} />
-      <div className="model-ctrl-pod" aria-label="3D view controls">
-        {/* Row 1 — up arrow */}
-        <span className="model-ctrl-spacer" />
-        <button type="button" className="model-ctrl-btn" onClick={() => panView(0, 1)} aria-label="Pan up" title="Pan up">
-          <IconArrowUp />
-        </button>
-        <span className="model-ctrl-spacer" />
+      <div
+        className="model-mat-pod"
+        aria-label="Preview material controls"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div className="model-mat-row">
+          <span className="model-mat-label">QR</span>
+          <input
+            type="color"
+            className="model-mat-swatch"
+            value={previewOptions?.qrColor ?? "#222222"}
+            onChange={(e) => onPreviewOptionsChange?.({ ...previewOptions, qrColor: e.target.value })}
+            title="QR module color"
+            aria-label="QR module color"
+          />
+          <select
+            className="model-mat-sel"
+            value={previewOptions?.qrMaterial ?? "matte"}
+            onChange={(e) => onPreviewOptionsChange?.({ ...previewOptions, qrMaterial: e.target.value as PreviewMaterialType })}
+            aria-label="QR module material"
+          >
+            <option value="matte">Matte</option>
+            <option value="plastic">Plastic</option>
+            <option value="metallic">Metallic</option>
+            <option value="normal">Normal</option>
+          </select>
+        </div>
+        <div className="model-mat-row">
+          <span className="model-mat-label">Base</span>
+          <input
+            type="color"
+            className="model-mat-swatch"
+            value={previewOptions?.baseColor ?? "#e8e8e8"}
+            onChange={(e) => onPreviewOptionsChange?.({ ...previewOptions, baseColor: e.target.value })}
+            title="Base color"
+            aria-label="Base color"
+          />
+          <select
+            className="model-mat-sel"
+            value={previewOptions?.baseMaterial ?? "matte"}
+            onChange={(e) => onPreviewOptionsChange?.({ ...previewOptions, baseMaterial: e.target.value as PreviewMaterialType })}
+            aria-label="Base material"
+          >
+            <option value="matte">Matte</option>
+            <option value="plastic">Plastic</option>
+            <option value="metallic">Metallic</option>
+            <option value="normal">Normal</option>
+          </select>
+        </div>
+      </div>
+      <div
+        className={`model-ctrl-pod ${controlsVisible ? "is-open" : "is-collapsed"}`}
+        aria-label="3D view controls"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <div
+          className={`model-ctrl-strip ${controlsVisible ? "is-open" : "is-closed"}`}
+          role="button"
+          tabIndex={0}
+          aria-label="Show or hide camera controls"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setControlsVisible((prev) => !prev)}
+          onKeyDown={(e) => {
+            if (e.key === " " || e.key === "Enter") {
+              e.preventDefault();
+              setControlsVisible((prev) => !prev);
+            }
+          }}
+        />
+        <div className="model-ctrl-grid" aria-hidden={!controlsVisible}>
+          {/* Row 1 — up arrow */}
+          <span className="model-ctrl-spacer" />
+          <button type="button" className="model-ctrl-btn" onClick={() => panView(0, 1)} aria-label="Pan up" title="Pan up">
+            <IconArrowUp />
+          </button>
+          <span className="model-ctrl-spacer" />
 
-        {/* Row 2 — left / orbit indicator / right */}
-        <button type="button" className="model-ctrl-btn" onClick={() => panView(-1, 0)} aria-label="Pan left" title="Pan left">
-          <IconArrowLeft />
-        </button>
-        <span className="model-ctrl-orbit" title="Drag to orbit">
-          <IconOrbit />
-        </span>
-        <button type="button" className="model-ctrl-btn" onClick={() => panView(1, 0)} aria-label="Pan right" title="Pan right">
-          <IconArrowRight />
-        </button>
+          {/* Row 2 — left / orbit indicator / right */}
+          <button type="button" className="model-ctrl-btn" onClick={() => panView(-1, 0)} aria-label="Pan left" title="Pan left">
+            <IconArrowLeft />
+          </button>
+          <span className="model-ctrl-orbit" title="Drag to orbit">
+            <IconOrbit />
+          </span>
+          <button type="button" className="model-ctrl-btn" onClick={() => panView(1, 0)} aria-label="Pan right" title="Pan right">
+            <IconArrowRight />
+          </button>
 
-        {/* Row 3 — down arrow */}
-        <span className="model-ctrl-spacer" />
-        <button type="button" className="model-ctrl-btn" onClick={() => panView(0, -1)} aria-label="Pan down" title="Pan down">
-          <IconArrowDown />
-        </button>
-        <span className="model-ctrl-spacer" />
+          {/* Row 3 — down arrow */}
+          <span className="model-ctrl-spacer" />
+          <button type="button" className="model-ctrl-btn" onClick={() => panView(0, -1)} aria-label="Pan down" title="Pan down">
+            <IconArrowDown />
+          </button>
+          <span className="model-ctrl-spacer" />
 
-        {/* Row 4 — zoom out / home / zoom in */}
-        <button type="button" className="model-ctrl-btn" onClick={() => zoomView(1.18)} aria-label="Zoom out" title="Zoom out">
-          <IconZoomOut />
-        </button>
-        <button type="button" className="model-ctrl-btn model-ctrl-btn--home" onClick={resetHomeView} aria-label="Reset view" title="Reset to home view">
-          <IconHome />
-        </button>
-        <button type="button" className="model-ctrl-btn" onClick={() => zoomView(0.84)} aria-label="Zoom in" title="Zoom in">
-          <IconZoomIn />
-        </button>
+          {/* Row 4 — zoom out / home / zoom in */}
+          <button type="button" className="model-ctrl-btn" onClick={() => zoomView(1.18)} aria-label="Zoom out" title="Zoom out">
+            <IconZoomOut />
+          </button>
+          <button type="button" className="model-ctrl-btn model-ctrl-btn--home" onClick={resetHomeView} aria-label="Reset view" title="Reset to home view">
+            <IconHome />
+          </button>
+          <button type="button" className="model-ctrl-btn" onClick={() => zoomView(0.84)} aria-label="Zoom in" title="Zoom in">
+            <IconZoomIn />
+          </button>
+        </div>
       </div>
     </div>
   );

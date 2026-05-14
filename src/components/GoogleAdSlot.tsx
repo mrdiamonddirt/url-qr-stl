@@ -23,18 +23,22 @@ type GoogleTagApi = {
   destroySlots?: (slots?: GoogleTagSlot[]) => boolean;
 };
 
+type GoogleTagCommandQueue = {
+  cmd: Array<() => void>;
+};
+
 declare global {
   interface Window {
-    googletag?: GoogleTagApi;
+    googletag?: GoogleTagApi | GoogleTagCommandQueue;
   }
 }
 
 let gptLoadPromise: Promise<void> | null = null;
 let servicesEnabled = false;
 
-function getGoogletag(): GoogleTagApi {
+function getGoogletag(): GoogleTagApi | GoogleTagCommandQueue {
   if (!window.googletag) {
-    window.googletag = { cmd: [] } as GoogleTagApi;
+    window.googletag = { cmd: [] };
   }
   if (!window.googletag.cmd) {
     window.googletag.cmd = [];
@@ -44,7 +48,7 @@ function getGoogletag(): GoogleTagApi {
 
 function loadGptScript(): Promise<void> {
   const googletag = getGoogletag();
-  if (googletag.apiReady) {
+  if ("apiReady" in googletag && googletag.apiReady) {
     return Promise.resolve();
   }
 
@@ -134,6 +138,11 @@ const GoogleAdSlot: React.FC<GoogleAdSlotProps> = ({
             return;
           }
 
+          if (!("defineSlot" in googletag) || !("pubads" in googletag) || !("enableServices" in googletag) || !("display" in googletag)) {
+            setStatus("failed");
+            return;
+          }
+
           const slot = googletag.defineSlot(adUnitPath, resolvedSizes, slotElementId);
           if (!slot) {
             setStatus("failed");
@@ -164,7 +173,9 @@ const GoogleAdSlot: React.FC<GoogleAdSlotProps> = ({
       if (createdSlot) {
         const googletag = getGoogletag();
         googletag.cmd.push(() => {
-          googletag.destroySlots?.([createdSlot as GoogleTagSlot]);
+          if ("destroySlots" in googletag) {
+            googletag.destroySlots?.([createdSlot as GoogleTagSlot]);
+          }
         });
       }
     };

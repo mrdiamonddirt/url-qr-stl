@@ -121,6 +121,7 @@ Notes:
 - Deploy commands require a clean working tree.
 - `npm run deploy:dev` now runs a local build before pushing.
 - `npm run deploy:dev` must be run from branch `dev`.
+- use command to switch to branches before deploying: `git checkout dev` or `git checkout production`
 - `npm run deploy:prod` runs a local build before it pushes to production.
 - `npm run deploy:prod` must be run from branch `production`.
 - Production deploy requires a typed confirmation prompt.

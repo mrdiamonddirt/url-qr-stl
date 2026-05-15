@@ -856,10 +856,11 @@ function drawDemoQrPattern(
   }
 }
 
-export function composeTemplateSelectorPreview(
+export async function composeTemplateSelectorPreview(
   template: QrTemplate,
-  values?: Record<string, string>
-): string {
+  values?: Record<string, string>,
+  qrDataUrl?: string
+): Promise<string> {
   try {
     const canvas = document.createElement("canvas");
     canvas.width = SELECTOR_PREVIEW_SIZE;
@@ -903,7 +904,18 @@ export function composeTemplateSelectorPreview(
     ctx.clip();
 
     if (layout.qrSize > 0) {
-      drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
+      if (qrDataUrl) {
+        try {
+          const qrImage = await loadImage(qrDataUrl);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(qrImage, layout.qrX, layout.qrY, layout.qrSize, layout.qrSize);
+          ctx.imageSmoothingEnabled = true;
+        } catch {
+          drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
+        }
+      } else {
+        drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
+      }
     }
 
     drawFusedQrBorder(ctx, template, resolvedValues, layout);

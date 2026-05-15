@@ -278,6 +278,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
   const [modelPreviewLoading, setModelPreviewLoading] = useState(false);
+  const [composingPreview, setComposingPreview] = useState(false);
+  const [generatingQr, setGeneratingQr] = useState(false);
+  const [modelExporting, setModelExporting] = useState(false);
+  const [savingPng, setSavingPng] = useState(false);
   const [modelFormat, setModelFormat] = useState<ModelFormat>("stl");
   const [stlParams, setStlParams] = useState<StlParams>(DEFAULT_STL);
   const [previewQrColor, setPreviewQrColor] = useState("#222222");
@@ -318,6 +322,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
   );
+
   const templateForegroundColor = (templateValues.template_color ?? selectedTemplate.accentColor).toUpperCase();
   const currentPlan = profile?.plan ?? "free";
   const isPremiumPlan = isPaidPlan(currentPlan);
@@ -517,6 +522,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setModelPreviewLoading(false);
     const timeoutId = window.setTimeout(() => {
       (async () => {
+        setComposingPreview(true);
         try {
           const image = await composeTemplatePreview({
             template: selectedTemplate,
@@ -529,6 +535,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           setComposedPreviewUrl("");
           const errorMsg = err instanceof Error ? err.message : "Failed to compose template preview";
           setError(`${errorMsg}. Try refreshing or selecting a different template.`);
+        } finally {
+          setComposingPreview(false);
         }
       })();
     }, 60);
@@ -678,6 +686,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     let cancelled = false;
 
     (async () => {
+      setGeneratingQr(true);
       try {
         const nextQr = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType, {
           darkColor: qrForegroundColor,
@@ -692,6 +701,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       } catch (err) {
         if (!cancelled) {
           setError("Failed to update the QR preview. Check your input and try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setGeneratingQr(false);
         }
       }
     })();
@@ -1147,6 +1160,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     try {
+      setModelExporting(true);
       const blob =
         modelFormat === "stl"
           ? await createTemplateStlBlob(composedPreviewUrl, stlParams)
@@ -1174,6 +1188,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus(`${modelFormat.toUpperCase()} downloaded.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to export 3D model. Check your browser settings or try a different format.");
+    } finally {
+      setModelExporting(false);
     }
   }
 
@@ -1213,6 +1229,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus("QR PNG saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save QR code image. Check your browser settings or try again.");
+    } finally {
+      setSavingPng(false);
     }
   }
 
@@ -1248,6 +1266,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus("Template PNG saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save template image. Check your browser settings or try again.");
+    } finally {
+      setSavingPng(false);
     }
   }
 
@@ -2028,7 +2048,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <>
                         <p className="stage-label">Import URL and generate QR</p>
                         <div className="preview-box stage-preview-box preview-box--import">
-                          {qrDataUrl && !isUrlEditorOpen ? (
+                          {generatingQr ? (
+                            <div className="model-preview-box__overlay" aria-live="polite" aria-busy="true">
+                              <IonSpinner name="crescent" className="model-preview-box__spinner" />
+                              <span>Generating QR code...</span>
+                            </div>
+                          ) : qrDataUrl && !isUrlEditorOpen ? (
                             <>
                               <button
                                 type="button"
@@ -2089,10 +2114,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                               <IonButton
                                 className="import-save-btn"
                                 fill={isPremiumPlan ? "outline" : "clear"}
+                                                                disabled={savingPng}
                                 onClick={() => void handleSaveQrPng()}
                               >
                                 <IonIcon slot="start" icon={imageOutline} />
-                                {isPremiumPlan ? "Save QR PNG" : "Save QR PNG (Premium)"}
+                                {savingPng ? "Saving..." : (isPremiumPlan ? "Save QR PNG" : "Save QR PNG (Premium)")}
                               </IonButton>
                             )}
                           </div>
@@ -2109,7 +2135,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                       <>
                         <p className="stage-label">Compose template and QR</p>
                         <div className="preview-box stage-preview-box loop-preview-box">
-                          {composedPreviewUrl ? (
+                          {composingPreview ? (
+                            <div className="model-preview-box__overlay" aria-live="polite" aria-busy="true">
+                              <IonSpinner name="crescent" className="model-preview-box__spinner" />
+                              <span>Composing preview...</span>
+                            </div>
+                          ) : composedPreviewUrl ? (
                             <img src={composedPreviewUrl} alt="Template and QR preview" />
                           ) : (
                             <span>Selecting a template auto-composes the preview once a QR is generated.</span>
@@ -2183,10 +2214,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           <IonButton
                             className="import-save-btn"
                             fill={isPremiumPlan ? "outline" : "clear"}
+                            disabled={savingPng}
                             onClick={() => void handleSaveTemplatePng()}
                           >
                             <IonIcon slot="start" icon={imageOutline} />
-                            {isPremiumPlan ? "Save Template PNG" : "Save Template PNG (Premium)"}
+                            {savingPng ? "Saving..." : (isPremiumPlan ? "Save Template PNG" : "Save Template PNG (Premium)")}
                           </IonButton>
                         )}
                       </>
@@ -2258,10 +2290,11 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           <IonButton
                             className="model-preview-mobile-export"
                             color="secondary"
-                            disabled={!modelPreviewReady}
+                            disabled={!modelPreviewReady || modelExporting}
                             onClick={handleDownloadModel}
                           >
-                            {user ? `Export ${modelFormat.toUpperCase()}` : "Sign in to export"}
+                            {modelExporting && <IonSpinner name="crescent" slot="start" style={{ width: '16px', height: '16px' }} />}
+                            {modelExporting ? 'Exporting...' : (user ? `Export ${modelFormat.toUpperCase()}` : "Sign in to export")}
                           </IonButton>
                         </div>
                         <IonItem className="format-item">
@@ -2613,5 +2646,6 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     </IonPage>
   );
 };
+
 
 export default EditorPage;

@@ -47,7 +47,7 @@ async function readImageDimensions(file: File): Promise<{ width: number; height:
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Could not read image dimensions."));
+      img.onerror = () => reject(new Error("Failed to read image dimensions. Use a valid PNG, JPG, or WebP file."));
       img.src = objectUrl;
     });
     return { width: image.naturalWidth, height: image.naturalHeight };
@@ -129,7 +129,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
     listUserLogos(user.id)
       .then(setLogos)
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Could not load logos.");
+        setError(err instanceof Error ? err.message : "Failed to load your logos. Check your connection and try again.");
       })
       .finally(() => setLogosLoading(false));
   }, [isPaidUser, user]);
@@ -166,7 +166,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       const checkoutUrl = await createCheckoutSession(origin, targetPlan);
       window.location.href = checkoutUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start checkout.");
+      setError(err instanceof Error ? err.message : "Failed to start checkout. Refresh the page and try again.");
     } finally {
       setBillingBusy(false);
     }
@@ -182,7 +182,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       const portalUrl = await createBillingPortalSession(origin);
       window.location.href = portalUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open billing portal.");
+      setError(err instanceof Error ? err.message : "Failed to open billing portal. Try again or contact support.");
     } finally {
       setBillingBusy(false);
     }
@@ -227,7 +227,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       setLogos((prev) => [created, ...prev]);
       setStatus("Logo uploaded.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not upload logo.";
+      const message = err instanceof Error ? err.message : "Failed to upload your logo. Check the file and try again.";
       if (message.includes("logo_limit_exceeded")) {
         setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       } else {
@@ -246,7 +246,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       setLogos((prev) => prev.map((logo) => ({ ...logo, is_default: logo.id === logoId })));
       setStatus("Default logo updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not set default logo.");
+      setError(err instanceof Error ? err.message : "Failed to set default logo. Please try again.");
     }
   }
 
@@ -259,7 +259,7 @@ const SettingsPage: React.FC<Props> = ({ user, profile }) => {
       setLogos((prev) => prev.filter((logo) => logo.id !== logoId));
       setStatus("Logo removed.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not remove logo.");
+      setError(err instanceof Error ? err.message : "Failed to remove logo. Please try again.");
     } finally {
       setLogoDeleteBusyId(null);
     }

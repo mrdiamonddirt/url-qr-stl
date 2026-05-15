@@ -527,7 +527,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
           setComposedPreviewUrl(image);
         } catch (err) {
           setComposedPreviewUrl("");
-          setError(err instanceof Error ? err.message : "Could not compose template preview.");
+          const errorMsg = err instanceof Error ? err.message : "Failed to compose template preview";
+          setError(`${errorMsg}. Try refreshing or selecting a different template.`);
         }
       })();
     }, 60);
@@ -584,7 +585,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load logos.");
+          setError("Failed to load your saved logos. Check your internet connection and try again.");
         }
       } finally {
         if (!cancelled) {
@@ -690,7 +691,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not update QR preview.");
+          setError("Failed to update the QR preview. Check your input and try again.");
         }
       }
     })();
@@ -746,7 +747,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setSelectedLogoId(created.id);
       setStatus("Logo uploaded. It is now available for Frame QR tags.");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not upload logo.";
+      const message = err instanceof Error ? err.message : "Failed to upload your logo. Check the file and try again.";
       if (message.includes("logo_limit_exceeded")) {
         setError(`You can store up to ${logoLimit} logos. Remove one to add another.`);
       } else if (message.includes("premium_logo_access_required")) {
@@ -773,7 +774,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       }
       setStatus("Logo removed from your library.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not remove logo.");
+      setError("Failed to remove logo. Please try again or check your connection.");
     } finally {
       setLogoDeleteBusyId(null);
     }
@@ -789,7 +790,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setUserLogos((prev) => prev.map((logo) => ({ ...logo, is_default: logo.id === logoId })));
       setStatus("Default logo updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update default logo.");
+      setError("Failed to set default logo. Please try again.");
     }
   }
 
@@ -839,7 +840,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus(`Redirect mode saved: ${pendingRedirectMode === "instant" ? "Direct Link" : "Tracked Redirect"}.`);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not update redirect mode.";
+      const message = err instanceof Error ? err.message : "Failed to save redirect mode. Check your connection and try again.";
 
       if (message.toLowerCase().includes("premium")) {
         setSavedRedirectMode("interstitial");
@@ -945,7 +946,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         }
 
         if (!inserted) {
-          throw new Error("Could not create a unique short link. Please try again.");
+          throw new Error("Failed to create a short link. Refresh and try generating again.");
         }
       }
 
@@ -983,7 +984,8 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
       setStatus("Step 1 complete. Preview your QR code, then compose the template preview.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate QR.");
+      const errorMsg = err instanceof Error ? err.message : "Failed to generate QR code";
+      setError(`${errorMsg}. Check your URL and try again.`);
     }
   }
 
@@ -1063,7 +1065,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus(`Loaded tag ${record.code}. You can adjust template settings or export.`);
     } catch (err) {
       setQrDataUrl("");
-      setError(err instanceof Error ? err.message : "Could not restore QR preview.");
+      setError(err instanceof Error ? err.message : "Failed to load the QR code. Try refreshing or selecting a different tag.");
     }
 
     if (selectedQrTypeUnavailableReason) {
@@ -1171,7 +1173,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
       setStatus(`${modelFormat.toUpperCase()} downloaded.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Model export failed.");
+      setError(err instanceof Error ? err.message : "Failed to export 3D model. Check your browser settings or try a different format.");
     }
   }
 
@@ -1210,7 +1212,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       document.body.removeChild(link);
       setStatus("QR PNG saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save QR PNG.");
+      setError(err instanceof Error ? err.message : "Failed to save QR code image. Check your browser settings or try again.");
     }
   }
 
@@ -1245,7 +1247,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       document.body.removeChild(link);
       setStatus("Template PNG saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save template PNG.");
+      setError(err instanceof Error ? err.message : "Failed to save template image. Check your browser settings or try again.");
     }
   }
 
@@ -1284,14 +1286,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       const url = await createCheckoutSession(origin, targetPlan);
       
       if (!url) {
-        setError("Checkout session creation failed. Please try again.");
+        setError("Unable to start checkout. Refresh the page and try again.");
         return;
       }
       
       window.location.href = url;
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Could not start checkout.";
-      setError(errorMsg);
+      setError("Unable to start checkout. Please try again or contact support if the problem persists.");
     }
   }
 

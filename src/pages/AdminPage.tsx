@@ -95,7 +95,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
         });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load admin data.");
+          setError(err instanceof Error ? err.message : "Failed to load admin data. Check your connection and refresh.");
         }
       } finally {
         if (!cancelled) {
@@ -124,7 +124,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
       setUsers(usersData.users);
       setTotalUsers(usersData.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not refresh admin data.");
+      setError(err instanceof Error ? err.message : "Failed to refresh admin data. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -153,7 +153,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
       setStatus(`${row.email}: ${result.message}`);
       await refreshData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Plan update failed.");
+      setError(err instanceof Error ? err.message : "Failed to update user plan. Please try again.");
     } finally {
       setBusyUserId(null);
     }
@@ -171,7 +171,7 @@ const AdminPage: React.FC<Props> = ({ user }) => {
       setStatus(`${row.email}: ${result.message}`);
       await refreshData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ban update failed.");
+      setError(err instanceof Error ? err.message : "Failed to update ban status. Please try again.");
     } finally {
       setBusyUserId(null);
     }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AmbientLight,
   Box3,
@@ -84,6 +84,36 @@ const IconOrbit = () => (
   </svg>
 );
 
+const IconFlatView = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="2" y="4" width="12" height="8" rx="1.5" />
+    <line x1="5" y1="8" x2="11" y2="8" />
+  </svg>
+);
+
+const IconFront = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="10" height="10" rx="1.5" />
+    <line x1="8" y1="5" x2="8" y2="11" />
+    <line x1="5" y1="8" x2="11" y2="8" />
+  </svg>
+);
+
+const IconRotateQuarter = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 6A4 4 0 1 1 8 12" />
+    <polyline points="8,9.5 8,12 10.5,12" />
+    <line x1="8" y1="2" x2="8" y2="5" />
+  </svg>
+);
+
+const IconLock = ({ locked }: { locked: boolean }) => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="7" width="10" height="7" rx="1.5" />
+    {locked ? <path d="M5.5 7V5.4A2.5 2.5 0 0 1 10.5 5.4V7" /> : <path d="M5.5 7V5.4A2.5 2.5 0 0 1 9.2 3.2" />}
+  </svg>
+);
+
 const ModelPreviewCanvas: React.FC<Props> = ({
   imageDataUrl,
   params,
@@ -96,7 +126,69 @@ const ModelPreviewCanvas: React.FC<Props> = ({
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const homeViewRef = useRef<HomeView | null>(null);
+  const ambientLightRef = useRef<AmbientLight | null>(null);
+  const keyLightRef = useRef<DirectionalLight | null>(null);
+  const renderSceneRef = useRef<(() => void) | null>(null);
+  const defaultFovRef = useRef(48);
+  const flatViewEnabledRef = useRef(false);
+  const orbitLockedRef = useRef(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [flatViewEnabled, setFlatViewEnabled] = useState(false);
+  const [orbitLocked, setOrbitLocked] = useState(false);
+
+  const renderPreview = useCallback(() => {
+    renderSceneRef.current?.();
+  }, []);
+
+  const applyFlatViewMode = useCallback((enabled: boolean) => {
+    const camera = cameraRef.current;
+    const ambient = ambientLightRef.current;
+    const key = keyLightRef.current;
+
+    if (ambient) {
+      ambient.intensity = enabled ? 1.45 : 1.1;
+    }
+
+    if (key) {
+      key.intensity = enabled ? 0.2 : 0.9;
+    }
+
+    if (camera) {
+      camera.fov = enabled ? 36 : defaultFovRef.current;
+      camera.updateProjectionMatrix();
+    }
+
+    renderPreview();
+  }, [renderPreview]);
+
+  const toggleFlatViewMode = () => {
+    setFlatViewEnabled((prev) => {
+      const next = !prev;
+      flatViewEnabledRef.current = next;
+      applyFlatViewMode(next);
+      return next;
+    });
+  };
+
+  const applyOrbitLockMode = useCallback((locked: boolean) => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+
+    controls.enableRotate = !locked;
+    controls.update();
+    renderPreview();
+  }, [renderPreview]);
+
+  const toggleOrbitLock = () => {
+    setOrbitLocked((prev) => {
+      const next = !prev;
+      orbitLockedRef.current = next;
+      applyOrbitLockMode(next);
+      return next;
+    });
+  };
 
   const panView = (dx: number, dy: number) => {
     const camera = cameraRef.current;
@@ -143,6 +235,38 @@ const ModelPreviewCanvas: React.FC<Props> = ({
     controls.update();
   };
 
+  const snapFrontView = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) {
+      return;
+    }
+
+    const target = controls.target.clone();
+    const distance = camera.position.distanceTo(target);
+    camera.position.copy(target).addScaledVector(new Vector3(0, 0, 1), distance);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(target);
+    controls.update();
+    renderPreview();
+  };
+
+  const rotateQuarterTurn = () => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) {
+      return;
+    }
+
+    const target = controls.target.clone();
+    const offset = new Vector3().subVectors(camera.position, target);
+    offset.applyAxisAngle(new Vector3(0, 0, 1), -Math.PI / 2);
+    camera.position.copy(target).add(offset);
+    camera.lookAt(target);
+    controls.update();
+    renderPreview();
+  };
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) {
@@ -163,6 +287,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({
     scene.background = new Color("#f7f9fc");
 
     const camera = new PerspectiveCamera(48, width / height, 0.1, 1000);
+    defaultFovRef.current = camera.fov;
     camera.position.set(62, -74, 56);
     camera.lookAt(0, 0, 0);
 
@@ -181,6 +306,8 @@ const ModelPreviewCanvas: React.FC<Props> = ({
     keyLight.position.set(-20, -35, 100);
     scene.add(ambient);
     scene.add(keyLight);
+    ambientLightRef.current = ambient;
+    keyLightRef.current = keyLight;
 
     let active = true;
     let modelGroup: Group | null = null;
@@ -193,7 +320,11 @@ const ModelPreviewCanvas: React.FC<Props> = ({
       renderer.render(scene, camera);
     };
 
+    renderSceneRef.current = renderScene;
+
     controls.addEventListener("change", renderScene);
+    applyOrbitLockMode(orbitLockedRef.current);
+    applyFlatViewMode(flatViewEnabledRef.current);
     renderScene();
     onLoadingChange?.(true);
 
@@ -269,10 +400,13 @@ const ModelPreviewCanvas: React.FC<Props> = ({
       cameraRef.current = null;
       controlsRef.current = null;
       homeViewRef.current = null;
+      ambientLightRef.current = null;
+      keyLightRef.current = null;
+      renderSceneRef.current = null;
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [imageDataUrl, onLoadingChange, params, previewOptions, compositionExtents]);
+  }, [imageDataUrl, onLoadingChange, params, previewOptions, compositionExtents, applyFlatViewMode, applyOrbitLockMode]);
 
   return (
     <div className="model-canvas-shell">
@@ -347,12 +481,22 @@ const ModelPreviewCanvas: React.FC<Props> = ({
           }}
         />
         <div className="model-ctrl-grid" aria-hidden={!controlsVisible}>
-          {/* Row 1 — up arrow */}
-          <span className="model-ctrl-spacer" />
+          {/* Row 1 — flat / up / snap front */}
+          <button
+            type="button"
+            className={`model-ctrl-btn ${flatViewEnabled ? "is-active" : ""}`}
+            onClick={toggleFlatViewMode}
+            aria-label={flatViewEnabled ? "Turn 3D effect on" : "Turn 3D effect off"}
+            title={flatViewEnabled ? "3D effect on" : "3D effect off"}
+          >
+            <IconFlatView />
+          </button>
           <button type="button" className="model-ctrl-btn" onClick={() => panView(0, 1)} aria-label="Pan up" title="Pan up">
             <IconArrowUp />
           </button>
-          <span className="model-ctrl-spacer" />
+          <button type="button" className="model-ctrl-btn" onClick={snapFrontView} aria-label="Snap to front" title="Snap to front">
+            <IconFront />
+          </button>
 
           {/* Row 2 — left / orbit indicator / right */}
           <button type="button" className="model-ctrl-btn" onClick={() => panView(-1, 0)} aria-label="Pan left" title="Pan left">
@@ -365,12 +509,22 @@ const ModelPreviewCanvas: React.FC<Props> = ({
             <IconArrowRight />
           </button>
 
-          {/* Row 3 — down arrow */}
-          <span className="model-ctrl-spacer" />
+          {/* Row 3 — rotate / down / orbit lock */}
+          <button type="button" className="model-ctrl-btn" onClick={rotateQuarterTurn} aria-label="Rotate 90 degrees" title="Rotate 90 degrees">
+            <IconRotateQuarter />
+          </button>
           <button type="button" className="model-ctrl-btn" onClick={() => panView(0, -1)} aria-label="Pan down" title="Pan down">
             <IconArrowDown />
           </button>
-          <span className="model-ctrl-spacer" />
+          <button
+            type="button"
+            className={`model-ctrl-btn ${orbitLocked ? "is-active" : ""}`}
+            onClick={toggleOrbitLock}
+            aria-label={orbitLocked ? "Unlock orbit rotation" : "Lock orbit rotation"}
+            title={orbitLocked ? "Unlock orbit" : "Lock orbit"}
+          >
+            <IconLock locked={orbitLocked} />
+          </button>
 
           {/* Row 4 — zoom out / home / zoom in */}
           <button type="button" className="model-ctrl-btn" onClick={() => zoomView(1.18)} aria-label="Zoom out" title="Zoom out">

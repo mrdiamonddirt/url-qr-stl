@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-dev
   cancel-in-progress: true
 
 jobs:
@@ -32,15 +32,12 @@ jobs:
 
       - name: Build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.DEV_VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.DEV_VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH: ${{ secrets.DEV_VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH || secrets.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH }}
-          VITE_GAM_SCAN_LIMIT_SIZES: ${{ secrets.DEV_VITE_GAM_SCAN_LIMIT_SIZES || secrets.VITE_GAM_SCAN_LIMIT_SIZES }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH: ${{ secrets.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH }}
+          VITE_GAM_SCAN_LIMIT_SIZES: ${{ secrets.VITE_GAM_SCAN_LIMIT_SIZES }}
           VITE_REQUIRE_AUTH: "true"
         run: npm run build
-
-      - name: Set dev CNAME
-        run: echo "dev.url2stl.com" > dist/CNAME
 
       - name: SPA fallback
         run: cp dist/index.html dist/404.html

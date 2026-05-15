@@ -51,7 +51,7 @@ const AuthPage: React.FC<Props> = ({ user }) => {
     <IonPage>
       <IonHeader>
         <IonToolbar className="auth-toolbar">
-          <IonTitle className="premium-toolbar-title">URL 2 STL</IonTitle>
+          <IonTitle className="premium-toolbar-title" onClick={() => history.push('/')}>URL 2 STL</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="auth-shell" fullscreen>

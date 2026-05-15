@@ -1397,11 +1397,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             <div className="editor-toolbar__brand">
               <div className="editor-toolbar__mark">U2S</div>
               <div className="editor-toolbar__brand-copy">
-                <div className="editor-toolbar__title-row">
+                <div className="editor-toolbar__title-row" onClick={() => history.push('/')} style={{ cursor: 'pointer' }}>
+                  <IonIcon icon={openOutline} className="editor-toolbar__icon" />
                   <div className="editor-toolbar__title">URL 2 STL</div>
                   {isPremiumPlan && <span className="editor-toolbar__pro-pill">Pro</span>}
                 </div>
-                <p className="editor-toolbar__subtitle">Premium QR tags and printable 3D exports for physical links.</p>
+                <p className="editor-toolbar__subtitle" onClick={() => history.push('/')} style={{ cursor: 'pointer' }}>Premium QR tags and printable 3D exports for physical links.</p>
               </div>
             </div>
             <div className="editor-toolbar__actions">
@@ -2207,11 +2208,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             </IonButton>
                           )}
                         </div>
-                        {modelPreviewReady && (
-                          <IonText color="medium">
-                            <p className="model-hint">Drag to rotate, use controls to pan and zoom, or tap Home to reset the view.</p>
-                          </IonText>
-                        )}
+                        <IonItem className="format-item">
+                          <IonLabel>Download format</IonLabel>
+                          <IonSelect value={modelFormat} onIonChange={(e) => setModelFormat(e.detail.value)}>
+                            <IonSelectOption value="stl">STL</IonSelectOption>
+                            <IonSelectOption value="obj">OBJ</IonSelectOption>
+                          </IonSelect>
+                        </IonItem>
+
                       </>
                     )}
 

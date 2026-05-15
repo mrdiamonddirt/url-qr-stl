@@ -39,6 +39,9 @@ jobs:
           VITE_REQUIRE_AUTH: "true"
         run: npm run build
 
+      - name: Set dev CNAME
+        run: echo "dev.url2stl.com" > dist/CNAME
+
       - name: SPA fallback
         run: cp dist/index.html dist/404.html
 

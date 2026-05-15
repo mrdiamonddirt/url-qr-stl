@@ -10,6 +10,7 @@ import RedirectPage from './pages/RedirectPage';
 import TermsPage from './pages/TermsPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { getCurrentUser, getProfile, isOwnerAdminEmail, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
 import { isPaidPlan } from './lib/plans';
@@ -296,36 +297,38 @@ const App: React.FC = () => {
   }, [user]);
 
   return (
-    <IonApp>
-      <IonReactHashRouter basename={ROUTER_BASENAME}>
-        <IonRouterOutlet>
-          <Route exact path="/editor">
-            <EditorPage user={user} profile={profile} />
-          </Route>
-          <Route exact path="/auth">
-            <AuthPage user={user} />
-          </Route>
-          <Route exact path="/auth/callback">
-            <AuthCallbackPage />
-          </Route>
-          <Route exact path="/s/:code">
-            <RedirectPage />
-          </Route>
-          <Route exact path="/terms">
-            <TermsPage />
-          </Route>
-          <Route exact path="/settings">
-            <SettingsPage user={user} profile={profile} />
-          </Route>
-          <Route exact path="/admin">
-            {user && isOwnerAdminEmail(user.email) ? <AdminPage user={user} /> : <Redirect to="/settings" />}
-          </Route>
-          <Route exact path="/">
-            <Redirect to="/editor" />
-          </Route>
-        </IonRouterOutlet>
-      </IonReactHashRouter>
-    </IonApp>
+    <ErrorBoundary>
+      <IonApp>
+        <IonReactHashRouter basename={ROUTER_BASENAME}>
+          <IonRouterOutlet>
+            <Route exact path="/editor">
+              <EditorPage user={user} profile={profile} />
+            </Route>
+            <Route exact path="/auth">
+              <AuthPage user={user} />
+            </Route>
+            <Route exact path="/auth/callback">
+              <AuthCallbackPage />
+            </Route>
+            <Route exact path="/s/:code">
+              <RedirectPage />
+            </Route>
+            <Route exact path="/terms">
+              <TermsPage />
+            </Route>
+            <Route exact path="/settings">
+              <SettingsPage user={user} profile={profile} />
+            </Route>
+            <Route exact path="/admin">
+              {user && isOwnerAdminEmail(user.email) ? <AdminPage user={user} /> : <Redirect to="/settings" />}
+            </Route>
+            <Route exact path="/">
+              <Redirect to="/editor" />
+            </Route>
+          </IonRouterOutlet>
+        </IonReactHashRouter>
+      </IonApp>
+    </ErrorBoundary>
   );
 };
 

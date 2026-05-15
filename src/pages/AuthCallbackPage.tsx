@@ -33,7 +33,6 @@ const AuthCallbackPage: React.FC = () => {
         
         if (!supabase) {
           const msg = "Supabase not configured";
-          console.error("[AuthCallback]", msg);
           debugLines.push(msg);
           setDebug(debugLines.join("\n"));
           setError("Supabase not configured");
@@ -50,7 +49,6 @@ const AuthCallbackPage: React.FC = () => {
         if (error_description) {
           const msg = `OAuth error: ${error_description}`;
           debugLines.push(msg);
-          console.error("[AuthCallback]", msg);
           setDebug(debugLines.join("\n"));
           setError(msg);
           return;
@@ -58,12 +56,10 @@ const AuthCallbackPage: React.FC = () => {
 
         if (code) {
           debugLines.push(`Found auth code in URL, exchanging...`);
-          console.log("[AuthCallback] Found auth code, exchanging for session");
           const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) {
             const msg = `OAuth exchange failed: ${exchangeError.message}`;
             debugLines.push(msg);
-            console.error("[AuthCallback]", msg);
             setDebug(debugLines.join("\n"));
             setError(msg);
             return;
@@ -76,7 +72,6 @@ const AuthCallbackPage: React.FC = () => {
         const { data, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
-          console.error("[AuthCallback] Session error:", sessionError);
           debugLines.push(`Session error: ${sessionError.message}`);
           setDebug(debugLines.join("\n"));
           setError(`Session error: ${sessionError.message}`);
@@ -88,7 +83,6 @@ const AuthCallbackPage: React.FC = () => {
         if (hasSession) {
           debugLines.push(`User ID: ${data.session!.user.id}`);
         }
-        console.log("[AuthCallback] Session result:", data?.session ? "Session found" : "No session", data?.session);
 
         if (!cancelled) {
           if (!hasSession) {
@@ -104,7 +98,6 @@ const AuthCallbackPage: React.FC = () => {
             const { data: retryData, error: retryError } = await supabase.auth.getSession();
             if (!retryError && retryData?.session) {
               debugLines.push("Session found on retry!");
-              console.log("[AuthCallback] Session found on retry");
               const returnTo = localStorage.getItem("url-qr-stl.return-to") ?? "/editor";
               localStorage.removeItem("url-qr-stl.return-to");
               debugLines.push(`Redirecting to: ${returnTo}`);
@@ -122,7 +115,6 @@ const AuthCallbackPage: React.FC = () => {
           localStorage.removeItem("url-qr-stl.return-to");
           debugLines.push(`Redirecting to: ${returnTo}`);
           setDebug(debugLines.join("\n"));
-          console.log("[AuthCallback] Redirecting to:", returnTo);
           
           // Small delay to ensure session is properly stored
           setTimeout(() => {
@@ -132,7 +124,6 @@ const AuthCallbackPage: React.FC = () => {
           }, 100);
         }
       } catch (err) {
-        console.error("[AuthCallback] Unexpected error:", err);
         const msg = err instanceof Error ? err.message : "Unknown error during sign-in";
         setDebug(`[AuthCallback] Error: ${msg}\n${err instanceof Error ? err.stack : ""}`);
         setError(msg);

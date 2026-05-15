@@ -538,12 +538,29 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }, [generated, qrDataUrl, selectedTemplate, templateValues]);
 
   useEffect(() => {
+    let cancelled = false;
+
     setRecentByUser(listShortUrlsByUser(user?.id));
     if (user) {
-      getUserShortUrls(user.id).then(setSupabaseHistory);
+      getUserShortUrls(user.id)
+        .then((urls) => {
+          if (!cancelled) {
+            setSupabaseHistory(urls);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.error("Failed to load short URLs:", err);
+            setSupabaseHistory([]);
+          }
+        });
     } else {
       setSupabaseHistory([]);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -1263,22 +1280,17 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setAccountPanelOpen(false);
       // For Stripe redirect URLs, always use the actual origin (not BASE_URL subpath)
       const origin = window.location.origin;
-      console.log("[Upgrade] Starting checkout. Origin:", origin);
-      console.log("[Upgrade] Current user:", user?.id);
       
       const url = await createCheckoutSession(origin, targetPlan);
       
       if (!url) {
-        console.error("[Upgrade] No checkout URL returned");
-        setError("Checkout session creation failed: no URL returned");
+        setError("Checkout session creation failed. Please try again.");
         return;
       }
       
-      console.log("[Upgrade] Checkout URL received, redirecting...");
       window.location.href = url;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Could not start checkout.";
-      console.error("[Upgrade] Error:", errorMsg, err);
       setError(errorMsg);
     }
   }

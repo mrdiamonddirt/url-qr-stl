@@ -224,9 +224,12 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, previewOpti
           target: controls.target.clone(),
         };
       })
-      .catch(() => {
-        active = false;
-        onLoadingChange?.(false);
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to create 3D model preview:", err);
+          active = false;
+          onLoadingChange?.(false);
+        }
       });
 
     const resizeObserver = new ResizeObserver(() => {

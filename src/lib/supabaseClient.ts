@@ -18,9 +18,6 @@ import { getPlanLimits } from "./plans";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-console.log("[supabaseClient] VITE_SUPABASE_URL configured:", !!supabaseUrl);
-console.log("[supabaseClient] VITE_SUPABASE_ANON_KEY configured:", !!supabaseAnonKey);
-
 export const supabase =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -34,10 +31,7 @@ export const supabase =
     : null;
 
 if (!supabase) {
-  console.error("[supabaseClient] ERROR: Supabase not configured! Missing environment variables.", {
-    url: !!supabaseUrl,
-    key: !!supabaseAnonKey
-  });
+  // Supabase not configured - this will be caught at app startup
 }
 
 export async function signInWithGoogle() {
@@ -49,7 +43,6 @@ export async function signInWithGoogle() {
   // BASE_URL is root (`/`) so callback URL resolves to /auth/callback.
   const base = import.meta.env.BASE_URL ?? '/';
   const redirectTo = `${window.location.origin}${base}auth/callback`;
-  console.log("[signInWithGoogle] Constructed redirect URL:", redirectTo);
   
   localStorage.setItem("url-qr-stl.return-to", "/editor");
 
@@ -61,11 +54,8 @@ export async function signInWithGoogle() {
   });
 
   if (error) {
-    console.error("[signInWithGoogle] OAuth error:", error);
     throw error;
   }
-  
-  console.log("[signInWithGoogle] OAuth initiated successfully");
 }
 
 export async function signOut() {
@@ -155,22 +145,16 @@ export async function createCheckoutSession(origin: string, targetPlan: Checkout
   if (!supabase) throw new Error("Supabase not configured.");
   const basePath = import.meta.env.BASE_URL ?? "/";
   
-  console.log("[createCheckoutSession] Starting. Origin:", origin);
-  
   try {
     const session = await supabase.auth.getSession();
-    console.log("[createCheckoutSession] Auth session status:", session.data?.session ? "authenticated" : "not authenticated");
     
     const { data, error } = await supabase.functions.invoke("create-checkout-session", {
       body: { origin, targetPlan, basePath },
     });
     
     if (error) {
-      console.error("[createCheckoutSession] Function error:", error);
       throw error;
     }
-    
-    console.log("[createCheckoutSession] Function response received:", data);
     
     const url = (data as { url?: string }).url;
     if (!url) {
@@ -179,8 +163,6 @@ export async function createCheckoutSession(origin: string, targetPlan: Checkout
     
     return url;
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[createCheckoutSession] Full error:", errorMsg);
     throw err;
   }
 }

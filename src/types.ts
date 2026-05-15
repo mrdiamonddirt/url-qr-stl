@@ -41,6 +41,7 @@ export type QrTemplate = {
   frameStyle: "rounded" | "sharp" | "circle";
   accentColor: string;
   borderStyle: TemplateBorderStyle;
+  bottomBorderMode?: "normal" | "none" | "fusedLabel"; // controls bottom border/label relationship
   loopConfig?: TemplateLoopConfig;
   ctaLabel?: string;
   ctaConfig?: TemplateCtaConfig;

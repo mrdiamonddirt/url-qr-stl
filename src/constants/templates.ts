@@ -8,6 +8,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     frameStyle: "sharp",
     accentColor: "#111111",
     borderStyle: "none",
+    bottomBorderMode: "none",
     fields: [],
   },
   {
@@ -17,6 +18,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     frameStyle: "sharp",
     accentColor: "#1a1d24",
     borderStyle: "simple",
+    bottomBorderMode: "normal",
     fields: [],
   },
   {
@@ -27,6 +29,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     frameStyle: "rounded",
     accentColor: "#18212d",
     borderStyle: "fancy",
+    bottomBorderMode: "normal",
     fields: [],
   },
   {
@@ -36,6 +39,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
     frameStyle: "sharp",
     accentColor: "#161c25",
     borderStyle: "simple",
+    bottomBorderMode: "fusedLabel",
     ctaLabel: "SCAN ME",
     ctaConfig: {
       fieldKey: "cta_text",

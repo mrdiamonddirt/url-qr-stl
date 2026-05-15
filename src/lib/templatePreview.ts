@@ -228,12 +228,79 @@ function strokeFrame(
     return;
   }
 
-  ctx.strokeStyle = resolveTemplateAccentColor(template, values);
-  ctx.lineWidth = getFrameStrokeWidth(template, scale, values);
-  const outerInset = ctx.lineWidth / 2;
+  const borderWidth = getFrameStrokeWidth(template, scale, values);
+  if (borderWidth <= 0) {
+    return;
+  }
 
-  beginFramePath(ctx, template, x, y, width, height, outerInset, scale);
-  ctx.stroke();
+  // Support bottomBorderMode: normal (default), none (no bottom border), fusedLabel (bottom border fuses with label area)
+  const innerInset = Math.min(borderWidth, Math.min(width, height) / 2);
+  ctx.fillStyle = resolveTemplateAccentColor(template, values);
+
+  // Draw full border by default
+  if (!template.bottomBorderMode || template.bottomBorderMode === "normal") {
+    beginFramePath(ctx, template, x, y, width, height, 0, scale);
+    ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    beginFramePath(ctx, template, x, y, width, height, innerInset, scale);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Draw border with omitted bottom edge
+  if (template.bottomBorderMode === "none") {
+    // Draw border except bottom edge
+    ctx.beginPath();
+    ctx.moveTo(x, y + borderWidth / 2);
+    ctx.lineTo(x + width, y + borderWidth / 2);
+    ctx.lineTo(x + width, y + height - borderWidth / 2);
+    ctx.lineTo(x, y + height - borderWidth / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.moveTo(x + innerInset, y + innerInset);
+    ctx.lineTo(x + width - innerInset, y + innerInset);
+    ctx.lineTo(x + width - innerInset, y + height - innerInset);
+    ctx.lineTo(x + innerInset, y + height - innerInset);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // Overdraw bottom edge with white to erase border
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(x, y + height - borderWidth, width, borderWidth + 2);
+    ctx.restore();
+    return;
+  }
+
+  // Fused label: border wraps around label area (bottom border is replaced by label background)
+  if (template.bottomBorderMode === "fusedLabel") {
+    // Draw left, top, right borders only
+    ctx.beginPath();
+    ctx.moveTo(x, y + borderWidth / 2);
+    ctx.lineTo(x + width, y + borderWidth / 2);
+    ctx.lineTo(x + width, y + height - borderWidth / 2);
+    ctx.lineTo(x, y + height - borderWidth / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.moveTo(x + innerInset, y + innerInset);
+    ctx.lineTo(x + width - innerInset, y + innerInset);
+    ctx.lineTo(x + width - innerInset, y + height - innerInset);
+    ctx.lineTo(x + innerInset, y + height - innerInset);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // Overdraw bottom edge with label background (handled in CTA drawing)
+    return;
+  }
 }
 
 function drawTopLoop(
@@ -445,10 +512,19 @@ function drawEditableCtaLabel(
 ) {
   const chipY = chipYOverride ?? canvasSize - layout.bottomInset - layout.chipHeight;
   const chipX = (canvasSize - layout.chipWidth) / 2;
+  let drawChipX = chipX;
+  let drawChipY = chipY;
+  let drawChipWidth = layout.chipWidth;
+  let drawChipHeight = layout.chipHeight;
 
   ctx.fillStyle = "#101418";
   if (layout.blockStyle) {
-    ctx.fillRect(chipX, chipY, layout.chipWidth, layout.chipHeight);
+    // Snap and slightly overlap upward to avoid a 1px seam between QR and CTA bar.
+    drawChipX = Math.round(chipX);
+    drawChipY = Math.round(chipY) - 1;
+    drawChipWidth = Math.round(layout.chipWidth);
+    drawChipHeight = Math.round(layout.chipHeight) + 1;
+    ctx.fillRect(drawChipX, drawChipY, drawChipWidth, drawChipHeight);
   } else {
     drawRoundedRect(ctx, chipX, chipY, layout.chipWidth, layout.chipHeight, layout.chipRadius);
     ctx.fill();
@@ -465,12 +541,12 @@ function drawEditableCtaLabel(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const tracking = Math.max(0.1, layout.textSize * 0.035);
-  const textTop = chipY + layout.chipHeight / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
+  const textTop = drawChipY + drawChipHeight / 2 - ((layout.lines.length - 1) * layout.lineHeight) / 2;
   layout.lines.forEach((line, index) => {
     drawTrackedCenteredText(
       ctx,
       line,
-      chipX + layout.chipWidth / 2,
+      drawChipX + drawChipWidth / 2,
       textTop + index * layout.lineHeight,
       tracking
     );
@@ -505,22 +581,16 @@ function resolveQrInset(
   template: QrTemplate,
   frameSize: number,
   scale: number,
-  blockCta: boolean
+  blockCta: boolean,
+  frameStrokeWidth: number
 ): number {
   if (blockCta) {
     // Block-style CTA: QR fills edge-to-edge with only a tiny breathing margin
     return clampNumber(frameSize * 0.018, 6 * scale, 10 * scale);
   }
 
-  if (template.borderStyle === "fancy") {
-    return clampNumber(frameSize * 0.082, 24 * scale, 36 * scale);
-  }
-
-  if (template.borderStyle === "simple") {
-    return clampNumber(frameSize * 0.06, 16 * scale, 26 * scale);
-  }
-
-  return clampNumber(frameSize * 0.042, 10 * scale, 18 * scale);
+  const borderDrivenInset = frameStrokeWidth > 0 ? frameStrokeWidth * 0.55 : frameSize * 0.045;
+  return clampNumber(borderDrivenInset, 8 * scale, 18 * scale);
 }
 
 function resolveCompositionLayout(
@@ -530,33 +600,85 @@ function resolveCompositionLayout(
   canvasSize: number
 ): CompositionLayout {
   const scale = canvasSize / BASE_CANVAS_SIZE;
+  // Uniform border/spacing unless overridden by bottomBorderMode
   const frameInset = (template.borderStyle === "none" ? 32 : 22) * scale;
   const loopExtraTop = template.loopConfig
     ? (() => {
-        const resolved = resolveLoopConfig(template.loopConfig, values);
-        return (resolved.outerRadius + resolved.stemHeight + resolved.lift + 10) * scale;
-      })()
+      const resolved = resolveLoopConfig(template.loopConfig, values);
+      return (resolved.outerRadius + resolved.stemHeight + resolved.lift + 10) * scale;
+    })()
     : 0;
   const frameTop = frameInset + loopExtraTop;
   const frameBottom = canvasSize - frameInset;
   const frameSize = Math.min(canvasSize - frameInset * 2, frameBottom - frameTop);
   const frameX = (canvasSize - frameSize) / 2;
   const frameY = frameTop;
-  const frameStrokeWidth = getFrameStrokeWidth(template, scale);
-  const frameContentInset = frameStrokeWidth > 0 ? frameStrokeWidth / 2 + 1 * scale : 0;
+  const frameStrokeWidth = getFrameStrokeWidth(template, scale, values);
+  const frameContentInset = frameStrokeWidth > 0 ? frameStrokeWidth : 0;
   const frameInnerWidth = Math.max(0, frameSize - 2 * frameContentInset);
-  const ctaLayout = resolveCtaLayout(ctx, template, values, scale, template.ctaConfig ? frameInnerWidth : undefined);
+  let ctaLayout = resolveCtaLayout(ctx, template, values, scale, template.ctaConfig ? frameInnerWidth : undefined);
   const blockCta = ctaLayout?.blockStyle ?? false;
-  const qrInset = resolveQrInset(template, frameSize, scale, blockCta);
+  const qrInset = resolveQrInset(template, frameSize, scale, blockCta, frameStrokeWidth);
   const ctaGap = blockCta ? 0 : Math.max(6 * scale, frameSize * 0.02);
-  const contentBottom = frameY + frameSize - frameContentInset;
-  const chipY = ctaLayout ? contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight : null;
-  const qrY = frameY + frameContentInset + qrInset;
-  const maxQrSizeFromFrame = frameSize - (frameContentInset + qrInset) * 2;
-  const maxQrSizeFromCta = chipY === null ? maxQrSizeFromFrame : chipY - ctaGap - qrY;
-  const qrSize = Math.max(0, Math.min(maxQrSizeFromFrame, maxQrSizeFromCta));
-  const qrX = frameX + (frameSize - qrSize) / 2;
+  const contentLeft = frameX + frameContentInset;
+  const contentTop = frameY + frameContentInset;
+  const contentRight = frameX + frameSize - frameContentInset;
+  let contentBottom = frameY + frameSize - frameContentInset;
 
+  // Adjust contentBottom for bottomBorderMode
+  if (template.bottomBorderMode === "none") {
+    // No bottom border: allow label to sit outside border area
+    contentBottom = frameY + frameSize;
+  } else if (template.bottomBorderMode === "fusedLabel" && ctaLayout) {
+    // Fused label: bottom border is replaced by label background, so contentBottom is at top of label
+    contentBottom = frameY + frameSize - ctaLayout.chipHeight;
+  }
+
+  const qrLeft = contentLeft + qrInset;
+  const qrTop = contentTop + qrInset;
+  const qrRight = contentRight - qrInset;
+  const qrAvailableWidth = Math.max(0, qrRight - qrLeft);
+
+  let chipYRaw = null;
+  if (ctaLayout) {
+    if (template.bottomBorderMode === "none") {
+      // Label sits outside border area
+      chipYRaw = frameY + frameSize + ctaLayout.bottomInset;
+    } else if (template.bottomBorderMode === "fusedLabel") {
+      // Label is fused with border, sits at bottom of frame
+      chipYRaw = frameY + frameSize - ctaLayout.chipHeight;
+    } else {
+      // Normal: label inside border
+      chipYRaw = contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight;
+    }
+  }
+
+  let qrBottomLimit = chipYRaw === null ? contentBottom - qrInset : chipYRaw - ctaGap;
+  let qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
+  let qrSize = Math.max(0, Math.floor(Math.min(qrAvailableWidth, qrAvailableHeight)));
+
+  if (blockCta && ctaLayout) {
+    const minChipHeight = Math.max(26 * scale, ctaLayout.lines.length * ctaLayout.lineHeight + 8 * scale);
+    const maxQrByHeight = Math.max(0, Math.floor(contentBottom - qrTop - minChipHeight));
+    qrSize = Math.max(0, Math.min(Math.floor(qrAvailableWidth), maxQrByHeight));
+
+    chipYRaw = qrTop + qrSize;
+    const fusedChipHeight = Math.max(minChipHeight, (template.bottomBorderMode === "fusedLabel" ? frameY + frameSize - chipYRaw : contentBottom - chipYRaw));
+    ctaLayout = {
+      ...ctaLayout,
+      chipWidth: contentRight - contentLeft,
+      chipHeight: fusedChipHeight,
+      bottomInset: 0,
+      blockStyle: true,
+    };
+
+    qrBottomLimit = chipYRaw;
+    qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
+  }
+
+  const qrX = Math.round(qrLeft + (qrAvailableWidth - qrSize) / 2);
+  const qrY = Math.round(qrTop + (Math.max(0, qrAvailableHeight - qrSize)) / 2);
+  const chipY = chipYRaw === null ? null : Math.round(chipYRaw);
   return {
     scale,
     frameX,

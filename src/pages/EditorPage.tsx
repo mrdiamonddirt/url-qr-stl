@@ -102,6 +102,7 @@ const LOGO_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const DEFAULT_FRAME_EMOJI = "🌊";
 const CTA_SIZE_SCALE = 1;
 const PENDING_CHECKOUT_PLAN_KEY = "url-qr-stl.pending-upgrade-plan";
+const TEMPLATE_QR_FALLBACK_TARGET = "https://url2stl.com";
 const CTA_FONT_OPTIONS: Record<string, string> = {
   default: "Clean Sans",
   impact: "Impact",
@@ -498,13 +499,28 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }, [selectedTemplate]);
 
   useEffect(() => {
-    const nextPreviews = TEMPLATE_PRESETS.reduce<Record<string, string>>((acc, preset) => {
-      const nextValues = preset.id === selectedTemplate.id ? templateValues : buildTemplateDefaults(preset);
-      acc[preset.id] = composeTemplateSelectorPreview(preset, nextValues);
-      return acc;
-    }, {});
-    setTemplateSelectorPreviews(nextPreviews);
-  }, [selectedTemplate, templateValues]);
+    let cancelled = false;
+
+    (async () => {
+      const nextPreviewEntries = await Promise.all(
+        TEMPLATE_PRESETS.map(async (preset) => {
+          const nextValues = preset.id === selectedTemplate.id ? templateValues : buildTemplateDefaults(preset);
+          const preview = await composeTemplateSelectorPreview(preset, nextValues, qrDataUrl);
+          return [preset.id, preview] as const;
+        })
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setTemplateSelectorPreviews(Object.fromEntries(nextPreviewEntries));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTemplate, templateValues, qrDataUrl]);
 
   useEffect(() => {
     if (isPremiumPlan) {
@@ -517,10 +533,12 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
   }, [isPremiumPlan, selectedTemplate, selectedTemplateId]);
 
-  // Auto-compose preview when template or text settings change (if QR is already generated)
+  // Auto-compose preview whenever a QR payload is available (fallback or generated)
   useEffect(() => {
-    if (!qrDataUrl || !generated) return;
-    setActiveRailStage("compose");
+    if (!qrDataUrl) return;
+    if (generated) {
+      setActiveRailStage("compose");
+    }
     setModelPreviewReady(false);
     setModelPreviewLoading(false);
     const timeoutId = window.setTimeout(() => {
@@ -531,7 +549,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             template: selectedTemplate,
             values: templateValues,
             qrDataUrl,
-            shortUrl: generated.shortUrl,
+            shortUrl: generated?.shortUrl ?? TEMPLATE_QR_FALLBACK_TARGET,
           });
           setComposedPreviewUrl(image);
         } catch (err) {
@@ -684,16 +702,13 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   }, [error, errorKey]);
 
   useEffect(() => {
-    if (!generated) {
-      return;
-    }
-
     let cancelled = false;
 
     (async () => {
       setGeneratingQr(true);
       try {
-        const nextQr = await toQrDataUrl(getQrTargetUrl(generated), stlParams.qrType, {
+        const targetUrl = generated ? getQrTargetUrl(generated) : TEMPLATE_QR_FALLBACK_TARGET;
+        const nextQr = await toQrDataUrl(targetUrl, stlParams.qrType, {
           darkColor: qrForegroundColor,
           lightColor: TRANSPARENT_QR_BACKGROUND,
         });

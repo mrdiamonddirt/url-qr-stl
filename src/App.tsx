@@ -54,7 +54,7 @@ setupIonicReact();
 const ROUTER_BASENAME = import.meta.env.BASE_URL;
 const REQUIRE_AUTH = import.meta.env.VITE_REQUIRE_AUTH === 'true';
 const SEO_BASE_URL = 'https://url2stl.com';
-const SEO_SOCIAL_IMAGE_URL = `${SEO_BASE_URL}/favicon.png`;
+const SEO_SOCIAL_IMAGE_URL = `${SEO_BASE_URL}/seo-qr.png`;
 const SEO_JSONLD_SCRIPT_ID = 'url2stl-seo-jsonld';
 const SEO_ORG_ID = `${SEO_BASE_URL}/#organization`;
 const SEO_WEBSITE_ID = `${SEO_BASE_URL}/#website`;

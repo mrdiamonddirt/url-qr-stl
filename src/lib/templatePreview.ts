@@ -222,7 +222,8 @@ function strokeFrame(
   width: number,
   height: number,
   scale = 1,
-  values?: Record<string, string>
+  values?: Record<string, string>,
+  bottomSplitY?: number
 ) {
   if (template.borderStyle === "none") {
     return;
@@ -233,11 +234,43 @@ function strokeFrame(
     return;
   }
 
+  if (template.frameStyle === "sharp") {
+    const left = Math.round(x);
+    const top = Math.round(y);
+    const right = Math.round(x + width);
+    const bottom = Math.round(y + height);
+    const outerWidth = Math.max(0, right - left);
+    const outerHeight = Math.max(0, bottom - top);
+    const snappedBorder = Math.max(1, Math.round(borderWidth));
+    const edge = Math.min(snappedBorder, Math.floor(Math.min(outerWidth, outerHeight) / 2));
+
+    if (edge <= 0 || outerWidth <= 0 || outerHeight <= 0) {
+      return;
+    }
+
+    ctx.fillStyle = resolveTemplateAccentColor(template, values);
+    if (template.bottomBorderMode === "fusedLabel") {
+      return;
+    }
+
+    const drawBottomEdge = template.bottomBorderMode !== "none";
+    ctx.fillRect(left, top, outerWidth, edge);
+    if (drawBottomEdge) {
+      ctx.fillRect(left, bottom - edge, outerWidth, edge);
+    }
+    const sideHeight = Math.max(0, outerHeight - (drawBottomEdge ? edge * 2 : edge));
+    if (sideHeight > 0) {
+      ctx.fillRect(left, top + edge, edge, sideHeight);
+      ctx.fillRect(right - edge, top + edge, edge, sideHeight);
+    }
+    return;
+  }
+
   // Support bottomBorderMode: normal (default), none (no bottom border), fusedLabel (bottom border fuses with label area)
   const innerInset = Math.min(borderWidth, Math.min(width, height) / 2);
   ctx.fillStyle = resolveTemplateAccentColor(template, values);
 
-  // Draw full border by default
+  // Draw full border by default.
   if (!template.bottomBorderMode || template.bottomBorderMode === "normal") {
     beginFramePath(ctx, template, x, y, width, height, 0, scale);
     ctx.fill();
@@ -278,28 +311,34 @@ function strokeFrame(
     return;
   }
 
-  // Fused label: border wraps around label area (bottom border is replaced by label background)
-  if (template.bottomBorderMode === "fusedLabel") {
-    // Draw left, top, right borders only
-    ctx.beginPath();
-    ctx.moveTo(x, y + borderWidth / 2);
-    ctx.lineTo(x + width, y + borderWidth / 2);
-    ctx.lineTo(x + width, y + height - borderWidth / 2);
-    ctx.lineTo(x, y + height - borderWidth / 2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.beginPath();
-    ctx.moveTo(x + innerInset, y + innerInset);
-    ctx.lineTo(x + width - innerInset, y + innerInset);
-    ctx.lineTo(x + width - innerInset, y + height - innerInset);
-    ctx.lineTo(x + innerInset, y + height - innerInset);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    // Overdraw bottom edge with label background (handled in CTA drawing)
+}
+
+function drawFusedQrBorder(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  values: Record<string, string>,
+  layout: CompositionLayout
+) {
+  if (template.bottomBorderMode !== "fusedLabel" || layout.qrSize <= 0) {
     return;
+  }
+
+  const thickness = Math.max(1, Math.round(getFrameStrokeWidth(template, layout.scale, values)));
+  const x = Math.round(layout.qrX - thickness);
+  const y = Math.round(layout.qrY - thickness);
+  const size = Math.max(0, Math.round(layout.qrSize + thickness * 2));
+
+  if (size <= 0) {
+    return;
+  }
+
+  ctx.fillStyle = resolveTemplateAccentColor(template, values);
+  ctx.fillRect(x, y, size, thickness);
+  ctx.fillRect(x, y + size - thickness, size, thickness);
+  const sideHeight = Math.max(0, size - thickness * 2);
+  if (sideHeight > 0) {
+    ctx.fillRect(x, y + thickness, thickness, sideHeight);
+    ctx.fillRect(x + size - thickness, y + thickness, thickness, sideHeight);
   }
 }
 
@@ -519,11 +558,11 @@ function drawEditableCtaLabel(
 
   ctx.fillStyle = "#101418";
   if (layout.blockStyle) {
-    // Snap and slightly overlap upward to avoid a 1px seam between QR and CTA bar.
+    // Snap to integer pixels to keep frame/CTA edges crisp without intruding into the QR area.
     drawChipX = Math.round(chipX);
-    drawChipY = Math.round(chipY) - 1;
+    drawChipY = Math.round(chipY);
     drawChipWidth = Math.round(layout.chipWidth);
-    drawChipHeight = Math.round(layout.chipHeight) + 1;
+    drawChipHeight = Math.round(layout.chipHeight);
     ctx.fillRect(drawChipX, drawChipY, drawChipWidth, drawChipHeight);
   } else {
     drawRoundedRect(ctx, chipX, chipY, layout.chipWidth, layout.chipHeight, layout.chipRadius);
@@ -578,17 +617,10 @@ function buildDefaultTemplateValues(template: QrTemplate): Record<string, string
 }
 
 function resolveQrInset(
-  template: QrTemplate,
   frameSize: number,
   scale: number,
-  blockCta: boolean,
   frameStrokeWidth: number
 ): number {
-  if (blockCta) {
-    // Block-style CTA: QR fills edge-to-edge with only a tiny breathing margin
-    return clampNumber(frameSize * 0.018, 6 * scale, 10 * scale);
-  }
-
   const borderDrivenInset = frameStrokeWidth > 0 ? frameStrokeWidth * 0.55 : frameSize * 0.045;
   return clampNumber(borderDrivenInset, 8 * scale, 18 * scale);
 }
@@ -618,21 +650,12 @@ function resolveCompositionLayout(
   const frameInnerWidth = Math.max(0, frameSize - 2 * frameContentInset);
   let ctaLayout = resolveCtaLayout(ctx, template, values, scale, template.ctaConfig ? frameInnerWidth : undefined);
   const blockCta = ctaLayout?.blockStyle ?? false;
-  const qrInset = resolveQrInset(template, frameSize, scale, blockCta, frameStrokeWidth);
+  const qrInset = resolveQrInset(frameSize, scale, frameStrokeWidth);
   const ctaGap = blockCta ? 0 : Math.max(6 * scale, frameSize * 0.02);
   const contentLeft = frameX + frameContentInset;
   const contentTop = frameY + frameContentInset;
   const contentRight = frameX + frameSize - frameContentInset;
-  let contentBottom = frameY + frameSize - frameContentInset;
-
-  // Adjust contentBottom for bottomBorderMode
-  if (template.bottomBorderMode === "none") {
-    // No bottom border: allow label to sit outside border area
-    contentBottom = frameY + frameSize;
-  } else if (template.bottomBorderMode === "fusedLabel" && ctaLayout) {
-    // Fused label: bottom border is replaced by label background, so contentBottom is at top of label
-    contentBottom = frameY + frameSize - ctaLayout.chipHeight;
-  }
+  const contentBottom = frameY + frameSize - frameContentInset;
 
   const qrLeft = contentLeft + qrInset;
   const qrTop = contentTop + qrInset;
@@ -640,40 +663,36 @@ function resolveCompositionLayout(
   const qrAvailableWidth = Math.max(0, qrRight - qrLeft);
 
   let chipYRaw = null;
+  const borderWidthPx = Math.max(1, Math.round(frameStrokeWidth));
   if (ctaLayout) {
     if (template.bottomBorderMode === "none") {
       // Label sits outside border area
       chipYRaw = frameY + frameSize + ctaLayout.bottomInset;
     } else if (template.bottomBorderMode === "fusedLabel") {
-      // Label is fused with border, sits at bottom of frame
-      chipYRaw = frameY + frameSize - ctaLayout.chipHeight;
+      // Keep CTA anchored at the bottom inside the frame border.
+      chipYRaw = contentBottom - ctaLayout.chipHeight;
     } else {
       // Normal: label inside border
       chipYRaw = contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight;
     }
   }
 
-  let qrBottomLimit = chipYRaw === null ? contentBottom - qrInset : chipYRaw - ctaGap;
+  const qrBottomAnchor = chipYRaw === null
+    ? contentBottom - qrInset
+    : (template.bottomBorderMode === "fusedLabel"
+      ? chipYRaw - borderWidthPx
+      : chipYRaw - ctaGap - qrInset);
+  let qrBottomLimit = Math.max(qrTop, qrBottomAnchor);
   let qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
   let qrSize = Math.max(0, Math.floor(Math.min(qrAvailableWidth, qrAvailableHeight)));
 
-  if (blockCta && ctaLayout) {
-    const minChipHeight = Math.max(26 * scale, ctaLayout.lines.length * ctaLayout.lineHeight + 8 * scale);
-    const maxQrByHeight = Math.max(0, Math.floor(contentBottom - qrTop - minChipHeight));
-    qrSize = Math.max(0, Math.min(Math.floor(qrAvailableWidth), maxQrByHeight));
-
-    chipYRaw = qrTop + qrSize;
-    const fusedChipHeight = Math.max(minChipHeight, (template.bottomBorderMode === "fusedLabel" ? frameY + frameSize - chipYRaw : contentBottom - chipYRaw));
+  if (ctaLayout && template.bottomBorderMode === "fusedLabel") {
+    const borderWidth = Math.max(1, Math.round(frameStrokeWidth));
+    const fusedChipWidth = Math.max(0, Math.round(qrSize + borderWidth * 2));
     ctaLayout = {
       ...ctaLayout,
-      chipWidth: contentRight - contentLeft,
-      chipHeight: fusedChipHeight,
-      bottomInset: 0,
-      blockStyle: true,
+      chipWidth: fusedChipWidth,
     };
-
-    qrBottomLimit = chipYRaw;
-    qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
   }
 
   const qrX = Math.round(qrLeft + (qrAvailableWidth - qrSize) / 2);
@@ -773,7 +792,17 @@ export function composeTemplateSelectorPreview(
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
-    strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, resolvedValues);
+    strokeFrame(
+      ctx,
+      template,
+      layout.frameX,
+      layout.frameY,
+      layout.frameSize,
+      layout.frameSize,
+      layout.scale,
+      resolvedValues,
+      layout.chipY ?? undefined
+    );
     drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, resolvedValues);
 
     ctx.save();
@@ -793,11 +822,13 @@ export function composeTemplateSelectorPreview(
       drawDemoQrPattern(ctx, layout.qrX, layout.qrY, layout.qrSize);
     }
 
+    drawFusedQrBorder(ctx, template, resolvedValues, layout);
+    ctx.restore();
+
     if (layout.chipY !== null && layout.ctaLayout) {
       drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY);
     }
 
-    ctx.restore();
     return canvas.toDataURL("image/png");
   } catch {
     return "";
@@ -827,7 +858,17 @@ export async function composeTemplatePreview({
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
-  strokeFrame(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale, values);
+  strokeFrame(
+    ctx,
+    template,
+    layout.frameX,
+    layout.frameY,
+    layout.frameSize,
+    layout.frameSize,
+    layout.scale,
+    values,
+    layout.chipY ?? undefined
+  );
   drawTopLoop(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.scale, values);
 
   ctx.save();
@@ -883,11 +924,13 @@ export async function composeTemplatePreview({
     }
   }
 
+  drawFusedQrBorder(ctx, template, values, layout);
+
+  ctx.restore();
+
   if (layout.chipY !== null && layout.ctaLayout) {
     drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY);
   }
-
-  ctx.restore();
 
   return canvas.toDataURL("image/png");
 }

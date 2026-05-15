@@ -34,6 +34,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH: ${{ secrets.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH }}
+          VITE_GAM_SCAN_LIMIT_SIZES: ${{ secrets.VITE_GAM_SCAN_LIMIT_SIZES }}
         run: npm run build
 
 

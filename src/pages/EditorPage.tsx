@@ -44,7 +44,11 @@ import {
 } from "ionicons/icons";
 import { TEMPLATE_PRESETS } from "../constants/templates";
 import ModelPreviewCanvas from "../components/ModelPreviewCanvas";
-import { composeTemplatePreview, composeTemplateSelectorPreview } from "../lib/templatePreview";
+import {
+  composeTemplatePreview,
+  composeTemplateSelectorPreview,
+  resolveTemplateCompositionExtents,
+} from "../lib/templatePreview";
 import { createTemplateObjBlob, createTemplateStlBlob, downloadStl } from "../lib/stl";
 import { ensureHttpUrl, shortUrlForCode } from "../lib/shortener";
 import { getQrTypeUnavailableReason, isPremiumQrType, toQrDataUrl } from "../lib/qr";
@@ -214,32 +218,42 @@ async function readImageDimensions(file: File): Promise<{ width: number; height:
 
 function buildSimplifiedEmojiLogoDataUrl(emoji: string): string {
   try {
-    const canvas = document.createElement("canvas");
-    const size = 160;
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
+    const outputCanvas = document.createElement("canvas");
+    const outputSize = 192;
+    outputCanvas.width = outputSize;
+    outputCanvas.height = outputSize;
+    const outputCtx = outputCanvas.getContext("2d");
+    if (!outputCtx) {
       return "";
     }
 
-    ctx.clearRect(0, 0, size, size);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    const supersampleScale = 2;
+    const rasterSize = outputSize * supersampleScale;
+    const rasterCanvas = document.createElement("canvas");
+    rasterCanvas.width = rasterSize;
+    rasterCanvas.height = rasterSize;
+    const rasterCtx = rasterCanvas.getContext("2d");
+    if (!rasterCtx) {
+      return "";
+    }
 
-    // Use a font that supports outlined emoji glyphs
-    ctx.font = `112px 'Arial', 'Noto Sans', 'sans-serif'`;
+    rasterCtx.clearRect(0, 0, rasterSize, rasterSize);
+    rasterCtx.textAlign = "center";
+    rasterCtx.textBaseline = "middle";
+    rasterCtx.font = `${Math.round(rasterSize * 0.7)}px 'Arial', 'Noto Sans', 'sans-serif'`;
+    rasterCtx.lineJoin = "round";
+    rasterCtx.lineCap = "round";
+    rasterCtx.strokeStyle = "black";
+    rasterCtx.lineWidth = Math.max(10, Math.round(rasterSize * 0.052));
+    rasterCtx.strokeText(emoji, rasterSize / 2, rasterSize / 2);
+    rasterCtx.fillStyle = "white";
+    rasterCtx.fillText(emoji, rasterSize / 2, rasterSize / 2);
 
-    // Add a black outline
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = "black";
-    ctx.strokeText(emoji, size / 2, size / 2);
-
-    // Fill the emoji with white color
-    ctx.fillStyle = "white";
-    ctx.fillText(emoji, size / 2, size / 2);
-
-    return canvas.toDataURL("image/png");
+    outputCtx.imageSmoothingEnabled = true;
+    outputCtx.imageSmoothingQuality = "high";
+    outputCtx.clearRect(0, 0, outputSize, outputSize);
+    outputCtx.drawImage(rasterCanvas, 0, 0, outputSize, outputSize);
+    return outputCanvas.toDataURL("image/png");
   } catch {
     return "";
   }
@@ -278,6 +292,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [qrForegroundColor, setQrForegroundColor] = useState(DEFAULT_QR_COLOR);
   const [composedPreviewUrl, setComposedPreviewUrl] = useState("");
+  const [modelSourcePreviewUrl, setModelSourcePreviewUrl] = useState("");
   const [modelPreviewReady, setModelPreviewReady] = useState(false);
   const [modelPreviewLoading, setModelPreviewLoading] = useState(false);
   const [composingPreview, setComposingPreview] = useState(false);
@@ -324,6 +339,10 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const selectedTemplate = useMemo(
     () => TEMPLATE_PRESETS.find((preset) => preset.id === selectedTemplateId) ?? TEMPLATE_PRESETS[0],
     [selectedTemplateId]
+  );
+  const compositionExtents = useMemo(
+    () => resolveTemplateCompositionExtents(selectedTemplate, templateValues),
+    [selectedTemplate, templateValues]
   );
 
   const templateForegroundColor = (templateValues.template_color ?? selectedTemplate.accentColor).toUpperCase();
@@ -493,6 +512,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setTemplateValues(defaults);
     }
     setComposedPreviewUrl("");
+    setModelSourcePreviewUrl("");
     setModelPreviewReady(false);
     setModelPreviewLoading(false);
   }, [selectedTemplate]);
@@ -527,15 +547,18 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       (async () => {
         setComposingPreview(true);
         try {
-          const image = await composeTemplatePreview({
+          const displayImage = await composeTemplatePreview({
             template: selectedTemplate,
             values: templateValues,
             qrDataUrl,
             shortUrl: generated.shortUrl,
+            renderIntent: "display",
           });
-          setComposedPreviewUrl(image);
+          setComposedPreviewUrl(displayImage);
+          setModelSourcePreviewUrl("");
         } catch (err) {
           setComposedPreviewUrl("");
+          setModelSourcePreviewUrl("");
           const errorMsg = err instanceof Error ? err.message : "Failed to compose template preview";
           setError(`${errorMsg}. Try refreshing or selecting a different template.`);
         } finally {
@@ -548,6 +571,26 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       window.clearTimeout(timeoutId);
     };
   }, [generated, qrDataUrl, selectedTemplate, templateValues]);
+
+  async function ensureModelSourcePreview(): Promise<string | null> {
+    if (modelSourcePreviewUrl) {
+      return modelSourcePreviewUrl;
+    }
+
+    if (!generated || !qrDataUrl) {
+      return null;
+    }
+
+    const modelImage = await composeTemplatePreview({
+      template: selectedTemplate,
+      values: templateValues,
+      qrDataUrl,
+      shortUrl: generated.shortUrl,
+      renderIntent: "model",
+    });
+    setModelSourcePreviewUrl(modelImage);
+    return modelImage;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1129,7 +1172,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     setStatus(`Loaded tag ${row.short_code}.`);
   }
 
-  function handleGenerateModelPreview(): boolean {
+  async function handleGenerateModelPreview(): Promise<boolean> {
     setError("");
     setStatus("");
 
@@ -1138,10 +1181,24 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       return false;
     }
 
-    setModelPreviewLoading(true);
-    setModelPreviewReady(true);
-    setStatus("Building 3D preview...");
-    return true;
+    try {
+      setModelPreviewLoading(true);
+      const modelSource = await ensureModelSourcePreview();
+      if (!modelSource) {
+        setError("Could not prepare the model source image. Compose the preview again.");
+        setModelPreviewLoading(false);
+        return false;
+      }
+
+      setModelPreviewReady(true);
+      setStatus("Building 3D preview...");
+      return true;
+    } catch (err) {
+      setModelPreviewReady(false);
+      setModelPreviewLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to prepare model preview source.");
+      return false;
+    }
   }
 
   async function handleDownloadModel() {
@@ -1171,10 +1228,15 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
     try {
       setModelExporting(true);
+      const modelSource = await ensureModelSourcePreview();
+      if (!modelSource) {
+        setError("Could not prepare the model source image. Compose the preview again.");
+        return;
+      }
       const blob =
         modelFormat === "stl"
-          ? await createTemplateStlBlob(composedPreviewUrl, stlParams)
-          : await createTemplateObjBlob(composedPreviewUrl, stlParams);
+          ? await createTemplateStlBlob(modelSource, stlParams, { compositionExtents })
+          : await createTemplateObjBlob(modelSource, stlParams, { compositionExtents });
       const extension = modelFormat === "stl" ? "stl" : "obj";
       downloadStl(blob, `qr-tag-${generated.code}.${extension}`);
 
@@ -1387,7 +1449,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     if ((stage === "render" || stage === "export") && !modelPreviewReady) {
-      const previewReady = handleGenerateModelPreview();
+      const previewReady = await handleGenerateModelPreview();
       if (!previewReady) {
         return;
       }
@@ -1416,7 +1478,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     if ((nextRailStage.key === "render" || nextRailStage.key === "export") && !modelPreviewReady) {
-      const previewReady = handleGenerateModelPreview();
+      const previewReady = await handleGenerateModelPreview();
       if (!previewReady) {
         return;
       }
@@ -2246,8 +2308,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           {modelPreviewReady && generated ? (
                             <>
                               <ModelPreviewCanvas
-                                imageDataUrl={composedPreviewUrl}
+                                imageDataUrl={modelSourcePreviewUrl || composedPreviewUrl}
                                 params={stlParams}
+                                compositionExtents={compositionExtents}
                                 previewOptions={previewOptions}
                                 onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}
@@ -2286,8 +2349,9 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                           {modelPreviewReady && generated ? (
                             <>
                               <ModelPreviewCanvas
-                                imageDataUrl={composedPreviewUrl}
+                                imageDataUrl={modelSourcePreviewUrl || composedPreviewUrl}
                                 params={stlParams}
+                                compositionExtents={compositionExtents}
                                 previewOptions={previewOptions}
                                 onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}

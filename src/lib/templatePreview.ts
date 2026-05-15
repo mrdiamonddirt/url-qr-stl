@@ -5,6 +5,7 @@ type ComposeTemplatePreviewInput = {
   values: Record<string, string>;
   qrDataUrl: string;
   shortUrl: string;
+  renderIntent?: "display" | "model";
 };
 
 type ResolvedCtaLayout = {
@@ -30,6 +31,13 @@ type CompositionLayout = {
   qrSize: number;
   chipY: number | null;
   ctaLayout: ResolvedCtaLayout | null;
+};
+
+export type TemplateCompositionExtents = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 };
 
 const BASE_CANVAS_SIZE = 480;
@@ -129,6 +137,10 @@ export function isRemoteImageUrl(src: string): boolean {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampNormalized(value: number): number {
+  return clampNumber(value, 0, 1);
 }
 
 function resolveTemplateAccentColor(template: QrTemplate, values?: Record<string, string>): string {
@@ -547,7 +559,8 @@ function drawEditableCtaLabel(
   ctx: CanvasRenderingContext2D,
   layout: ResolvedCtaLayout,
   canvasSize: number,
-  chipYOverride?: number
+  chipYOverride?: number,
+  renderIntent: "display" | "model" = "display"
 ) {
   const chipY = chipYOverride ?? canvasSize - layout.bottomInset - layout.chipHeight;
   const chipX = (canvasSize - layout.chipWidth) / 2;
@@ -571,12 +584,20 @@ function drawEditableCtaLabel(
 
   ctx.fillStyle = "#ffffff";
   ctx.font = `800 ${layout.textSize}px ${layout.fontStack}`;
-  ctx.strokeStyle = "rgba(8, 10, 12, 0.55)";
-  ctx.lineWidth = Math.max(1, layout.textSize * 0.08);
-  ctx.lineJoin = "round";
-  ctx.shadowColor = "rgba(0, 0, 0, 0.22)";
-  ctx.shadowBlur = Math.max(1, layout.textSize * 0.12);
-  ctx.shadowOffsetY = Math.max(0.5, layout.textSize * 0.035);
+  if (renderIntent === "display") {
+    ctx.strokeStyle = "rgba(8, 10, 12, 0.55)";
+    ctx.lineWidth = Math.max(1, layout.textSize * 0.08);
+    ctx.lineJoin = "round";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.22)";
+    ctx.shadowBlur = Math.max(1, layout.textSize * 0.12);
+    ctx.shadowOffsetY = Math.max(0.5, layout.textSize * 0.035);
+  } else {
+    ctx.strokeStyle = "transparent";
+    ctx.lineWidth = 0;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+  }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const tracking = Math.max(0.1, layout.textSize * 0.035);
@@ -712,6 +733,69 @@ function resolveCompositionLayout(
   };
 }
 
+export function resolveTemplateCompositionExtents(
+  template: QrTemplate,
+  values: Record<string, string>,
+  canvasSize = BASE_CANVAS_SIZE
+): TemplateCompositionExtents {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return {
+      left: 0,
+      top: 0,
+      right: 1,
+      bottom: 1,
+    };
+  }
+
+  const layout = resolveCompositionLayout(ctx, template, values, canvasSize);
+  let left = layout.frameX;
+  let top = layout.frameY;
+  let right = layout.frameX + layout.frameSize;
+  let bottom = layout.frameY + layout.frameSize;
+
+  if (template.loopConfig) {
+    const loop = resolveLoopConfig(template.loopConfig, values);
+    const centerX = layout.frameX + layout.frameSize / 2;
+    const stemHeight = loop.stemHeight * layout.scale;
+    const outerRadius = loop.outerRadius * layout.scale;
+    const lift = loop.lift * layout.scale;
+    const stemTop = layout.frameY - stemHeight;
+    const loopCenterY = stemTop - lift;
+
+    left = Math.min(left, centerX - outerRadius);
+    right = Math.max(right, centerX + outerRadius);
+    top = Math.min(top, loopCenterY - outerRadius);
+  }
+
+  if (layout.ctaLayout && layout.chipY !== null) {
+    const chipX = (canvasSize - layout.ctaLayout.chipWidth) / 2;
+    left = Math.min(left, chipX);
+    right = Math.max(right, chipX + layout.ctaLayout.chipWidth);
+    top = Math.min(top, layout.chipY);
+    bottom = Math.max(bottom, layout.chipY + layout.ctaLayout.chipHeight);
+  }
+
+  if (right <= left || bottom <= top) {
+    return {
+      left: 0,
+      top: 0,
+      right: 1,
+      bottom: 1,
+    };
+  }
+
+  return {
+    left: clampNormalized(left / canvasSize),
+    top: clampNormalized(top / canvasSize),
+    right: clampNormalized(right / canvasSize),
+    bottom: clampNormalized(bottom / canvasSize),
+  };
+}
+
 function drawDemoQrPattern(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -840,6 +924,7 @@ export async function composeTemplatePreview({
   values,
   qrDataUrl,
   shortUrl,
+  renderIntent = "display",
 }: ComposeTemplatePreviewInput): Promise<string> {
   void shortUrl;
   const canvas = document.createElement("canvas");
@@ -928,8 +1013,8 @@ export async function composeTemplatePreview({
 
   ctx.restore();
 
-  if (layout.chipY !== null && layout.ctaLayout) {
-    drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY);
+    if (layout.chipY !== null && layout.ctaLayout) {
+      drawEditableCtaLabel(ctx, layout.ctaLayout, canvas.width, layout.chipY, renderIntent);
   }
 
   return canvas.toDataURL("image/png");

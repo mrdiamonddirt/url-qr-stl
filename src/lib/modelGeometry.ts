@@ -1,6 +1,7 @@
 import { BoxGeometry, BufferGeometry, Color, Group, Material, Mesh, MeshNormalMaterial, MeshStandardMaterial } from "three";
 import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
 import { buildQrMatrix } from "./qr";
+import type { TemplateCompositionExtents } from "./templatePreview";
 
 const DETAIL_SCALE: Record<StlParams["detail"], number> = {
   low: 1,
@@ -9,15 +10,15 @@ const DETAIL_SCALE: Record<StlParams["detail"], number> = {
 };
 
 const TEMPLATE_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
-  low: 144,
-  medium: 200,
-  high: 256,
+  low: 200,
+  medium: 300,
+  high: 400,
 };
 
 const TEMPLATE_PREVIEW_SAMPLE_WIDTH: Record<StlParams["detail"], number> = {
-  low: 96,
-  medium: 128,
-  high: 160,
+  low: 136,
+  medium: 192,
+  high: 256,
 };
 
 const TEMPLATE_EDGE_GUARD_PX = 2;
@@ -50,6 +51,7 @@ type ModelBuildOptions = {
 type TemplateModelGroupOptions = {
   mode?: "export" | "preview";
   previewOptions?: ModelPreviewOptions;
+  compositionExtents?: TemplateCompositionExtents;
 };
 
 type Run = {
@@ -131,6 +133,66 @@ function cropMaskToBounds(mask: GridMask, bounds: MaskBounds, padding = 0): Grid
   }
 
   return { width, height, data };
+}
+
+function combineTemplateBounds(extentsBounds: MaskBounds | null, detectedBounds: MaskBounds | null): MaskBounds | null {
+  // Use visible content bounds first to avoid converting transparent capture margin
+  // into model base geometry. Extents remain as a fallback safety net.
+  if (detectedBounds) {
+    return detectedBounds;
+  }
+  return extentsBounds;
+}
+
+export function resolveTemplateCropBounds(
+  extentsBounds: { left: number; top: number; right: number; bottom: number } | null,
+  detectedBounds: { left: number; top: number; right: number; bottom: number } | null
+): { left: number; top: number; right: number; bottom: number } | null {
+  return combineTemplateBounds(extentsBounds, detectedBounds);
+}
+
+function toMaskBoundsFromExtents(
+  extents: TemplateCompositionExtents,
+  sampleWidth: number,
+  sampleHeight: number
+): MaskBounds | null {
+  const normalizedLeft = Math.min(extents.left, extents.right);
+  const normalizedTop = Math.min(extents.top, extents.bottom);
+  const normalizedRight = Math.max(extents.left, extents.right);
+  const normalizedBottom = Math.max(extents.top, extents.bottom);
+
+  if (normalizedRight <= normalizedLeft || normalizedBottom <= normalizedTop) {
+    return null;
+  }
+
+  const edgeMaxX = sampleWidth - TEMPLATE_EDGE_GUARD_PX - 1;
+  const edgeMaxY = sampleHeight - TEMPLATE_EDGE_GUARD_PX - 1;
+  const edgeMinX = TEMPLATE_EDGE_GUARD_PX;
+  const edgeMinY = TEMPLATE_EDGE_GUARD_PX;
+
+  if (edgeMaxX < edgeMinX || edgeMaxY < edgeMinY) {
+    return null;
+  }
+
+  const paddingPx = 1;
+  const left = Math.max(edgeMinX, Math.floor(normalizedLeft * sampleWidth) - paddingPx);
+  const top = Math.max(edgeMinY, Math.floor(normalizedTop * sampleHeight) - paddingPx);
+  const right = Math.min(edgeMaxX, Math.ceil(normalizedRight * sampleWidth) - 1 + paddingPx);
+  const bottom = Math.min(edgeMaxY, Math.ceil(normalizedBottom * sampleHeight) - 1 + paddingPx);
+
+  if (right < left || bottom < top) {
+    return null;
+  }
+
+  return { left, top, right, bottom };
+}
+
+export function resolveMaskBoundsForTemplateExtents(
+  extents: TemplateCompositionExtents,
+  sampleWidth: number,
+  sampleHeight: number
+): { left: number; top: number; right: number; bottom: number } | null {
+  return toMaskBoundsFromExtents(extents, sampleWidth, sampleHeight);
 }
 
 function createMaterialFromOptions(type: PreviewMaterialType | undefined, color: string | undefined): Material {
@@ -327,7 +389,7 @@ export async function createTemplateModelGroup(
   }
 
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = options?.mode === "preview" ? "low" : "high";
+  ctx.imageSmoothingQuality = options?.mode === "preview" ? "medium" : "high";
   ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight);
   const pixels = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
   const detailData: boolean[] = new Array(sampleWidth * sampleHeight);
@@ -353,20 +415,11 @@ export async function createTemplateModelGroup(
       const blue = pixels[idx + 2];
       const alpha = pixels[idx + 3];
       const luma = red * 0.299 + green * 0.587 + blue * 0.114;
-      const isOpaque = alpha > 12;
+      const isOpaque = alpha > 10;
       baseData[y * sampleWidth + x] = isOpaque;
-      detailData[y * sampleWidth + x] = isOpaque && luma < 176;
+      detailData[y * sampleWidth + x] = isOpaque && luma < 184;
     }
   }
-
-  const denoisedDetailMask = removeTinyIslands(
-    {
-      width: sampleWidth,
-      height: sampleHeight,
-      data: detailData,
-    },
-    3
-  );
 
   const denoisedBaseMask = removeTinyIslands(
     {
@@ -374,10 +427,23 @@ export async function createTemplateModelGroup(
       height: sampleHeight,
       data: baseData,
     },
-    40
+    24
   );
 
-  const bounds = getMaskBounds(denoisedBaseMask);
+  let denoisedDetailMask = removeTinyIslands(
+    {
+      width: sampleWidth,
+      height: sampleHeight,
+      data: detailData,
+    },
+    2
+  );
+
+  const detectedBounds = getMaskBounds(denoisedDetailMask) ?? getMaskBounds(denoisedBaseMask);
+  const extentsBounds = options?.compositionExtents
+    ? toMaskBoundsFromExtents(options.compositionExtents, sampleWidth, sampleHeight)
+    : null;
+  const bounds = combineTemplateBounds(extentsBounds, detectedBounds);
   const previewMaterials = options?.previewOptions
     ? {
         baseMaterial: createMaterialFromOptions(options.previewOptions.baseMaterial, options.previewOptions.baseColor),

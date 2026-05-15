@@ -1,6 +1,11 @@
 import { OBJExporter, STLExporter } from "three-stdlib";
 import { StlParams } from "../types";
 import { createQrModelGroup, createTemplateModelGroup, disposeQrModelGroup } from "./modelGeometry";
+import type { TemplateCompositionExtents } from "./templatePreview";
+
+type TemplateExportOptions = {
+  compositionExtents?: TemplateCompositionExtents;
+};
 
 export function createQrStlBlob(value: string, params: StlParams): Blob {
   const group = createQrModelGroup(value, params);
@@ -28,8 +33,14 @@ export function createQrObjBlob(value: string, params: StlParams): Blob {
   return new Blob([output], { type: "model/obj" });
 }
 
-export async function createTemplateStlBlob(imageDataUrl: string, params: StlParams): Promise<Blob> {
-  const group = await createTemplateModelGroup(imageDataUrl, params);
+export async function createTemplateStlBlob(
+  imageDataUrl: string,
+  params: StlParams,
+  options?: TemplateExportOptions
+): Promise<Blob> {
+  const group = await createTemplateModelGroup(imageDataUrl, params, {
+    compositionExtents: options?.compositionExtents,
+  });
   group.updateMatrixWorld(true);
 
   const exporter = new STLExporter();
@@ -45,8 +56,14 @@ export async function createTemplateStlBlob(imageDataUrl: string, params: StlPar
   return new Blob([arrayBuffer], { type: "model/stl" });
 }
 
-export async function createTemplateObjBlob(imageDataUrl: string, params: StlParams): Promise<Blob> {
-  const group = await createTemplateModelGroup(imageDataUrl, params);
+export async function createTemplateObjBlob(
+  imageDataUrl: string,
+  params: StlParams,
+  options?: TemplateExportOptions
+): Promise<Blob> {
+  const group = await createTemplateModelGroup(imageDataUrl, params, {
+    compositionExtents: options?.compositionExtents,
+  });
   group.updateMatrixWorld(true);
   const exporter = new OBJExporter();
   const output = exporter.parse(group);

@@ -14,10 +14,12 @@ import {
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
 import { createTemplateModelGroup, disposeQrModelGroup } from "../lib/modelGeometry";
+import type { TemplateCompositionExtents } from "../lib/templatePreview";
 
 type Props = {
   imageDataUrl: string;
   params: StlParams;
+  compositionExtents?: TemplateCompositionExtents;
   previewOptions?: ModelPreviewOptions;
   onPreviewOptionsChange?: (opts: ModelPreviewOptions) => void;
   onLoadingChange?: (isLoading: boolean) => void;
@@ -82,7 +84,14 @@ const IconOrbit = () => (
   </svg>
 );
 
-const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, previewOptions, onPreviewOptionsChange, onLoadingChange }) => {
+const ModelPreviewCanvas: React.FC<Props> = ({
+  imageDataUrl,
+  params,
+  compositionExtents,
+  previewOptions,
+  onPreviewOptionsChange,
+  onLoadingChange,
+}) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -188,7 +197,11 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, previewOpti
     renderScene();
     onLoadingChange?.(true);
 
-    void createTemplateModelGroup(imageDataUrl, params, { mode: "preview", previewOptions })
+    void createTemplateModelGroup(imageDataUrl, params, {
+      mode: "preview",
+      previewOptions,
+      compositionExtents,
+    })
       .then((group) => {
         if (!active) {
           disposeQrModelGroup(group);
@@ -259,7 +272,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({ imageDataUrl, params, previewOpti
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [imageDataUrl, onLoadingChange, params, previewOptions]);
+  }, [imageDataUrl, onLoadingChange, params, previewOptions, compositionExtents]);
 
   return (
     <div className="model-canvas-shell">

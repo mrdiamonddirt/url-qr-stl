@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { IonApp } from "@ionic/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
@@ -58,6 +58,18 @@ describe("EditorPage template picker", () => {
 
     expect((await screen.findAllByPlaceholderText("Enter custom tag text")).length).toBeGreaterThan(0);
     expect(screen.getByText(/^Text size \(/i)).toBeInTheDocument();
+  });
+
+  test("auto-hides premium template lock notice", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(screen.getByRole("button", { name: "Select template Fancy Border" }));
+    expect(screen.getByText(/Premium template selected/i)).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Premium template selected/i)).not.toBeInTheDocument();
+    }, { timeout: 2600 });
   });
 
   test("shows direct link as locked for free accounts", () => {

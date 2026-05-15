@@ -109,6 +109,8 @@ const CTA_FONT_OPTIONS: Record<string, string> = {
   serif: "Serif",
   condensed: "Condensed",
 };
+const PREMIUM_TEMPLATE_LOCK_MESSAGE = "Premium template selected. Upgrade to unlock this style.";
+const PREMIUM_TEMPLATE_LOCK_KEY = "premium-template-lock";
 
 const DIMENSION_UNIT_OPTIONS: Array<{ value: DimensionUnit; label: string; mmFactor: number }> = [
   { value: "mm", label: "Millimeters (mm)", mmFactor: 1 },
@@ -296,6 +298,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const [tagSearch, setTagSearch] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   const [visibleStatus, setVisibleStatus] = useState("");
   const [visibleError, setVisibleError] = useState("");
   const [userLogos, setUserLogos] = useState<UserLogo[]>([]);
@@ -668,15 +671,17 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
     }
 
     setVisibleError(error);
+    const timeoutMs = errorKey === PREMIUM_TEMPLATE_LOCK_KEY ? 2000 : 1900;
     const timeoutId = window.setTimeout(() => {
       setVisibleError("");
       setError("");
-    }, 1900);
+      setErrorKey(null);
+    }, timeoutMs);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [error]);
+  }, [error, errorKey]);
 
   useEffect(() => {
     if (!generated) {
@@ -998,15 +1003,18 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       setStatus("Step 1 complete. Preview your QR code, then compose the template preview.");
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Failed to generate QR code";
+      setErrorKey(null);
       setError(`${errorMsg}. Check your URL and try again.`);
     }
   }
 
   function handleTemplateSelection(templateId: string, premiumOnly?: boolean) {
     if (premiumOnly && !isPremiumPlan) {
-      setError("Premium template selected. Upgrade to unlock this style.");
+      setErrorKey(PREMIUM_TEMPLATE_LOCK_KEY);
+      setError(PREMIUM_TEMPLATE_LOCK_MESSAGE);
       return;
     }
+    setErrorKey(null);
     setError("");
     setSelectedTemplateId(templateId);
   }
@@ -1014,6 +1022,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   function handleQrTypeChange(nextType: QrCodeType) {
     const unavailableReason = getQrTypeUnavailableReason(nextType);
     if (unavailableReason) {
+      setErrorKey(null);
       setError(unavailableReason);
       return;
     }
@@ -1026,6 +1035,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
             : nextType === "rmqr"
               ? "rMQR"
               : "iQR";
+                  setErrorKey(null);
       setError(`${premiumFeatureLabel} is a Premium feature. Upgrade to unlock advanced QR formats and artwork options.`);
       if (window.confirm(`${premiumFeatureLabel} is a Premium feature. Upgrade now?`)) {
         if (user) {

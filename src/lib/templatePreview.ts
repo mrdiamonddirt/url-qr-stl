@@ -172,7 +172,7 @@ function beginFramePath(
   ctx.closePath();
 }
 
-function resolveLoopConfig(
+export function resolveLoopConfig(
   loop: TemplateLoopConfig,
   values: Record<string, string>
 ): { outerRadius: number; innerRadius: number; stemWidth: number; stemHeight: number; lift: number } {
@@ -186,14 +186,20 @@ function resolveLoopConfig(
     ? Math.min(80, Math.max(16, rawStemWidth))
     : loop.stemWidth;
 
+  const rawWidthDelta = stemWidth - loop.stemWidth;
+  const widthDrivenRadius = loop.outerRadius + rawWidthDelta * 0.4;
+  const resolvedOuterRadius = Number.isFinite(rawWidthDelta)
+    ? Math.min(40, Math.max(8, Math.max(outerRadius, widthDrivenRadius)))
+    : outerRadius;
+
   const defaultThickness = loop.outerRadius - loop.innerRadius;
   const rawThickness = Number(values.loop_thickness);
   const thickness = Number.isFinite(rawThickness) && rawThickness > 0
     ? Math.min(20, Math.max(3, rawThickness))
     : defaultThickness;
 
-  const innerRadius = Math.max(2, outerRadius - thickness);
-  return { outerRadius, innerRadius, stemWidth, stemHeight: loop.stemHeight, lift: loop.lift };
+  const innerRadius = Math.max(2, resolvedOuterRadius - thickness);
+  return { outerRadius: resolvedOuterRadius, innerRadius, stemWidth, stemHeight: loop.stemHeight, lift: loop.lift };
 }
 
 function getFrameStrokeWidth(template: QrTemplate, scale = 1, values?: Record<string, string>): number {
@@ -254,16 +260,22 @@ function drawTopLoop(
   const lift = loop.lift * scale;
   const stemTop = frameY - stemHeight;
   const loopCenterY = stemTop - lift;
+  const stemBottomY = frameY;
+  const stemTopY = stemTop;
+  const shoulderY = stemTopY + Math.max(2 * scale, stemHeight * 0.26);
+  const halfBottom = stemWidth / 2;
+  const halfTop = Math.max(outerRadius * 0.46, Math.min(halfBottom, outerRadius * 0.62));
+  const shoulderControlY = shoulderY - Math.max(1.5 * scale, stemHeight * 0.14);
 
   ctx.fillStyle = resolveTemplateAccentColor(template, values);
-  drawRoundedRect(
-    ctx,
-    centerX - stemWidth / 2,
-    stemTop,
-    stemWidth,
-    stemHeight,
-    Math.min(stemWidth / 3, 14 * scale)
-  );
+  ctx.beginPath();
+  ctx.moveTo(centerX - halfBottom, stemBottomY);
+  ctx.lineTo(centerX - halfBottom, shoulderY);
+  ctx.quadraticCurveTo(centerX - halfBottom, shoulderControlY, centerX - halfTop, stemTopY);
+  ctx.lineTo(centerX + halfTop, stemTopY);
+  ctx.quadraticCurveTo(centerX + halfBottom, shoulderControlY, centerX + halfBottom, shoulderY);
+  ctx.lineTo(centerX + halfBottom, stemBottomY);
+  ctx.closePath();
   ctx.fill();
 
   ctx.beginPath();

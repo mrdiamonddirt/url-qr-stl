@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require("node:child_process");
+const https = require("node:https");
 const readline = require("node:readline");
 
 const target = process.argv[2];
@@ -49,6 +50,101 @@ function ensureCleanTree() {
 
 function ensureOriginRemote() {
   runOrThrow("git", ["remote", "get-url", "origin"], "Git remote 'origin' is not configured");
+}
+
+function getOriginRemoteUrl() {
+  const remote = runOrThrow("git", ["remote", "get-url", "origin"], "Git remote 'origin' is not configured");
+  return (remote.stdout || "").trim();
+}
+
+function parseGitHubRepo(originUrl) {
+  const httpsMatch = originUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (httpsMatch) {
+    return `${httpsMatch[1]}/${httpsMatch[2]}`;
+  }
+
+  const sshMatch = originUrl.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    return `${sshMatch[1]}/${sshMatch[2]}`;
+  }
+
+  return null;
+}
+
+function fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      url,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent": "url-qr-stl-deploy-script",
+          Accept: "application/vnd.github+json",
+        },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(body || "{}"));
+            } catch (error) {
+              reject(error);
+            }
+            return;
+          }
+
+          const err = new Error(`GitHub API ${res.statusCode || "error"}: ${body}`);
+          reject(err);
+        });
+      },
+    );
+
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function ensurePagesEnvironmentAllowsTargetBranch() {
+  const originUrl = getOriginRemoteUrl();
+  const repo = parseGitHubRepo(originUrl);
+  if (!repo) {
+    return;
+  }
+
+  try {
+    const env = await fetchJson(`https://api.github.com/repos/${repo}/environments/github-pages`);
+    const policy = env.deployment_branch_policy;
+
+    if (!policy || policy.custom_branch_policies !== true) {
+      return;
+    }
+
+    const branchPolicies = await fetchJson(
+      `https://api.github.com/repos/${repo}/environments/github-pages/deployment-branch-policies`,
+    );
+    const allowedBranches = (branchPolicies.branch_policies || []).map((entry) => entry.name);
+
+    if (!allowedBranches.includes(target)) {
+      throw new Error(
+        [
+          `GitHub Pages environment blocks branch '${target}'.`,
+          `Allowed branches: ${allowedBranches.join(", ") || "(none)"}.`,
+          "Fix: GitHub repo Settings -> Environments -> github-pages -> Deployment branches.",
+          `Add '${target}' or disable custom branch policies.`,
+        ].join(" "),
+      );
+    }
+  } catch (error) {
+    if (error && typeof error.message === "string" && error.message.includes("blocks branch")) {
+      throw error;
+    }
+
+    console.warn("Warning: Could not validate GitHub Pages environment branch policy.");
+  }
 }
 
 function getCurrentBranch() {
@@ -108,9 +204,10 @@ async function main() {
   }
 
   ensureGitRepo();
-  ensureCleanTree();
   ensureOriginRemote();
+  await ensurePagesEnvironmentAllowsTargetBranch();
   ensureRequiredSourceBranch();
+  ensureCleanTree();
   await confirmProductionDeploy();
 
   console.log(`Deploying current HEAD to origin/${target}...`);

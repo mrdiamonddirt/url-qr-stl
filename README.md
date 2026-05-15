@@ -129,6 +129,13 @@ Notes:
 - Because GitHub Pages serves one live site per repo, the most recent deploy becomes the active site.
 - In this one-repo setup, dev deploys are best checked on the GitHub Pages URL (`https://mrdiamonddirt.github.io/url-qr-stl/`) after the dev workflow completes.
 
+Required GitHub environment setting (important):
+
+- If deploy jobs fail after build with a `github-pages` environment error, your environment branch policy is blocking deploy branches.
+- Open repo Settings -> Environments -> `github-pages` -> Deployment branches.
+- Add `dev` and `production` as allowed branches (or disable custom branch policies).
+- Current deploy commands now preflight this and will fail early with guidance if the branch is blocked.
+
 One-time GitHub setup:
 
 1. Open your GitHub repo settings.

@@ -10,8 +10,8 @@
     "test.e2e": "cypress run",
     "test.unit": "vitest",
     "lint": "eslint",
-    "deploy:dev": "node scripts/deploy-branch.cjs dev",
-    "deploy:prod": "npm run build && node scripts/deploy-branch.cjs production --confirm"
+    "deploy:dev": "npm run build && node scripts/deploy-branch.cjs dev --require-branch dev",
+    "deploy:prod": "npm run build && node scripts/deploy-branch.cjs production --confirm --require-branch production"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

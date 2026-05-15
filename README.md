@@ -119,7 +119,10 @@ Notes:
 
 - Deploy commands push the current `HEAD` to the target branch (`origin/dev` or `origin/production`).
 - Deploy commands require a clean working tree.
+- `npm run deploy:dev` now runs a local build before pushing.
+- `npm run deploy:dev` must be run from branch `dev`.
 - `npm run deploy:prod` runs a local build before it pushes to production.
+- `npm run deploy:prod` must be run from branch `production`.
 - Production deploy requires a typed confirmation prompt.
 - Because GitHub Pages serves one live site per repo, the most recent deploy becomes the active site.
 

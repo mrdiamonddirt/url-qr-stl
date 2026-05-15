@@ -182,10 +182,10 @@ function buildTemplateDefaults(template: (typeof TEMPLATE_PRESETS)[number]): Rec
 }
 
 const RAIL_STAGES: Array<{ key: RailStage; label: string; hint: string }> = [
-  { key: "import", label: "Import URL", hint: "Generate short URL + QR" },
-  { key: "compose", label: "Template Edit", hint: "Compose tag preview" },
-  { key: "render", label: "Render", hint: "Generate 3D preview" },
-  { key: "export", label: "Export", hint: "Download STL or OBJ" },
+  { key: "import", label: "Import URL", hint: "Auto-generate short URL + QR" },
+  { key: "compose", label: "Template Edit", hint: "Compose printable tag preview" },
+  { key: "render", label: "Render", hint: "Generate 3D model preview" },
+  { key: "export", label: "Export", hint: "Download print-ready STL or OBJ" },
 ];
 
 const RAIL_STAGE_INDEX: Record<RailStage, number> = {
@@ -1656,14 +1656,19 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
         <div className="editor-layout">
           <section className="editor-hero">
             <div className="editor-hero__content">
-              <p className="hero-kicker">URL 2 STL Studio</p>
+              <p className="hero-kicker">Free 3D QR Maker</p>
               <div className="hero-heading-group">
-                <h1>Create polished QR tags for print, product packaging, and 3D output.</h1>
-                <p className="hero-subtitle">One workspace for short links, branded QR layouts, and export-ready geometry.</p>
+                <h1>Auto-convert any URL into a QR-based 3D model for STL or OBJ printing.</h1>
+                <p className="hero-subtitle">One free workspace for QR creation, model render preview, and print-ready conversion exports.</p>
               </div>
               <p className="hero-copy">
-                Turn a destination URL into a finished QR asset, review the composed tag before export, and generate a clean STL or OBJ without breaking the workflow.
+                Turn a destination link into a finished QR asset, preview the composed design, and export clean STL or OBJ files ready for 3D print workflows.
               </p>
+              <div className="hero-link-row" aria-label="Explore SEO guides">
+                <a href="/#/features">Compare features</a>
+                <a href="/#/faq">Read conversion FAQ</a>
+                <a href="/#/guides">Open maker guides</a>
+              </div>
               <div className="hero-metrics">
                 <div className="hero-metric">
                   <IonIcon icon={sparklesOutline} />
@@ -1831,7 +1836,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                   <div className="workflow-banner">
                     <div>
                       <p className="workflow-banner__eyebrow">Production workflow</p>
-                      <h2>Build the tag in sequence, then export with confidence.</h2>
+                      <h2>Follow the sequence to convert, render, and export with confidence.</h2>
                     </div>
                     <div className="workflow-steps" aria-label="Workflow steps">
                       <span>1. Input URL</span>
@@ -2056,7 +2061,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
 
                     {activeRailStage === "import" && (
                       <>
-                        <p className="stage-label">Import URL and generate QR</p>
+                        <p className="stage-label">Import URL and auto-generate QR</p>
                         <div className="preview-box stage-preview-box preview-box--import">
                           {generatingQr ? (
                             <div className="model-preview-box__overlay" aria-live="polite" aria-busy="true">

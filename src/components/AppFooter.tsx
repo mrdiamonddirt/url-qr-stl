@@ -10,9 +10,12 @@ const AppFooter: React.FC = () => (
       <div className="app-footer__inner">
         <div>
           <p className="app-footer__brand">URL 2 STL</p>
-          <p className="app-footer__copy">Premium QR tags, short links, and 3D-ready exports for physical products.</p>
+          <p className="app-footer__copy">Free QR maker for auto URL conversion to print-ready STL or OBJ 3D model exports.</p>
         </div>
         <div className="app-footer__meta">
+          <a href="/#/features">Features</a>
+          <a href="/#/faq">FAQ</a>
+          <a href="/#/guides">Guides</a>
           <a href="/#/terms">Terms &amp; Conditions</a>
           <span className="footer-version">v{APP_VERSION} build {BUILD_NUMBER}</span>
           <span>© {YEAR} All rights reserved.</span>

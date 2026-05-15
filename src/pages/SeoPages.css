@@ -1,0 +1,85 @@
+.seo-page {
+  --background:
+    radial-gradient(circle at top left, rgba(204, 229, 255, 0.6), transparent 32%),
+    radial-gradient(circle at top right, rgba(212, 235, 225, 0.5), transparent 28%),
+    linear-gradient(180deg, #f5f8fc 0%, #edf2f7 100%);
+}
+
+.seo-page__wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 16px 0;
+}
+
+.seo-page__hero {
+  margin-bottom: 16px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(20, 45, 70, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 16px 36px rgba(20, 46, 72, 0.08);
+}
+
+.seo-page__kicker {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #2f5877;
+}
+
+.seo-page__hero h1 {
+  margin: 8px 0;
+  font-size: clamp(1.45rem, 2.8vw, 2rem);
+  line-height: 1.2;
+  color: #102b42;
+}
+
+.seo-page__hero p {
+  margin: 0;
+  max-width: 72ch;
+  color: #2f4e66;
+  line-height: 1.6;
+}
+
+.seo-card {
+  margin-bottom: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(20, 45, 70, 0.09);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.seo-card h2 {
+  margin: 0 0 8px;
+  color: #123450;
+  font-size: 1.12rem;
+}
+
+.seo-card p,
+.seo-card li {
+  color: #2e4d64;
+  line-height: 1.55;
+}
+
+.seo-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.seo-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 8px;
+}
+
+.seo-link-row a {
+  font-weight: 700;
+  color: #0f4268;
+  text-decoration: none;
+}
+
+.seo-link-row a:hover {
+  text-decoration: underline;
+}

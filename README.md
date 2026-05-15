@@ -130,3 +130,44 @@ Notes:
 
 - You generally do not need Google Cloud Console for this GAM/AdSense web setup.
 - You do need the production URL in AdSense/GAM so Google can authorize serving on your domain.
+
+## SEO phase 3 checklist (Google Search Console)
+
+Property target:
+
+- `https://url2stl.com/`
+
+Verification setup:
+
+1. In Google Search Console, open the `https://url2stl.com/` URL-prefix property.
+2. Copy the HTML tag verification token.
+3. Replace `replace-with-google-search-console-token` in `index.html`.
+4. Optional Bing: replace `replace-with-bing-webmaster-token` in `index.html`.
+5. Deploy and click Verify in Search Console.
+
+Indexing and sitemap:
+
+1. Submit sitemap URL: `https://url2stl.com/sitemap.xml`.
+2. Request indexing for:
+	- `https://url2stl.com/#/editor`
+	- `https://url2stl.com/#/features`
+	- `https://url2stl.com/#/faq`
+	- `https://url2stl.com/#/guides`
+3. Confirm coverage for these pages is `Indexed` after crawl.
+
+Structured data validation:
+
+1. Validate home and FAQ routes in Rich Results Test.
+2. Confirm schema includes Organization, WebSite, SoftwareApplication, and FAQPage (on FAQ route).
+3. Fix any parsing or required-field warnings before final reindex requests.
+
+First 30-day monitoring loop:
+
+1. Track query clusters weekly:
+	- free qr maker
+	- auto url conversion
+	- qr to stl
+	- url to obj converter
+	- 3d model render print
+2. Compare clicks, impressions, CTR, and average position every 7 days.
+3. Refresh titles/H1 copy only if query intent mismatch appears (avoid keyword stuffing).

@@ -10,11 +10,15 @@ import RedirectPage from './pages/RedirectPage';
 import TermsPage from './pages/TermsPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
+import FeaturesPage from './pages/FeaturesPage';
+import FaqPage from './pages/FaqPage';
+import GuidesPage from './pages/GuidesPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { getCurrentUser, getProfile, isOwnerAdminEmail, supabase } from './lib/supabaseClient';
 import { backfillShortUrlOrigins } from './lib/storage';
 import { isPaidPlan } from './lib/plans';
 import { Profile } from './types';
+import { SEO_FAQ_ITEMS } from './constants/seoFaq';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -49,6 +53,12 @@ setupIonicReact();
 
 const ROUTER_BASENAME = import.meta.env.BASE_URL;
 const SEO_BASE_URL = 'https://url2stl.com';
+const SEO_SOCIAL_IMAGE_URL = `${SEO_BASE_URL}/favicon.png`;
+const SEO_JSONLD_SCRIPT_ID = 'url2stl-seo-jsonld';
+const SEO_ORG_ID = `${SEO_BASE_URL}/#organization`;
+const SEO_WEBSITE_ID = `${SEO_BASE_URL}/#website`;
+const SEO_SOFTWARE_ID = `${SEO_BASE_URL}/#software`;
+const SEO_DEFAULT_KEYWORDS = ['free', 'auto', 'stl', 'conversion', 'qr', 'maker', 'obj', '3d model', 'render', 'print'];
 
 type SeoMeta = {
   title: string;
@@ -57,8 +67,8 @@ type SeoMeta = {
 };
 
 const DEFAULT_SEO: SeoMeta = {
-  title: 'URL 2 STL | Turn Any URL Into a 3D-Printable QR Code',
-  description: 'Build 3D-printable QR tags from any URL. Create short links, customize QR templates, and export STL or OBJ files from one editor.',
+  title: 'Free 3D QR Code Maker | Auto-Convert URLs to STL/OBJ',
+  description: 'Free 3D QR code maker to auto-convert URLs into print-ready STL or OBJ files. Render, customize, and export QR tags for 3D printing in one workspace.',
   canonical: `${SEO_BASE_URL}/`,
 };
 
@@ -76,6 +86,30 @@ function getSeoForPath(pathname: string): SeoMeta {
       title: 'URL 2 STL | Sign In',
       description: 'Sign in with Google to manage premium plans, sync links, and unlock account-backed exports.',
       canonical: `${SEO_BASE_URL}/#/auth`,
+    };
+  }
+
+  if (pathname.startsWith('/features')) {
+    return {
+      title: 'Features | Free QR to STL/OBJ Converter and 3D Model Workflow',
+      description: 'Compare free and premium features for URL-to-QR conversion, STL/OBJ exports, render controls, and print-ready 3D model settings.',
+      canonical: `${SEO_BASE_URL}/#/features`,
+    };
+  }
+
+  if (pathname.startsWith('/faq')) {
+    return {
+      title: 'FAQ | Free QR Maker, STL Conversion, OBJ Export, and 3D Printing',
+      description: 'Answers to common questions about free QR generation, auto conversion, STL and OBJ exports, rendering, and 3D printing workflows.',
+      canonical: `${SEO_BASE_URL}/#/faq`,
+    };
+  }
+
+  if (pathname.startsWith('/guides')) {
+    return {
+      title: 'Guides | Auto URL Conversion to QR, STL, OBJ, and 3D Print',
+      description: 'Step-by-step guides for makers to convert URLs into QR assets, render 3D previews, and export STL or OBJ files for printing.',
+      canonical: `${SEO_BASE_URL}/#/guides`,
     };
   }
 
@@ -144,11 +178,132 @@ function applySeoMeta(meta: SeoMeta) {
   setMetaByProperty('og:url', meta.canonical);
   setMetaByName('twitter:title', meta.title);
   setMetaByName('twitter:description', meta.description);
+  setMetaByName('twitter:image', SEO_SOCIAL_IMAGE_URL);
+  setMetaByName('twitter:card', 'summary_large_image');
+  setMetaByProperty('og:image', SEO_SOCIAL_IMAGE_URL);
+  setMetaByProperty('og:image:alt', 'URL 2 STL free QR to 3D model maker');
 
   const canonicalTag = document.querySelector('link[rel="canonical"]');
   if (canonicalTag) {
     canonicalTag.setAttribute('href', meta.canonical);
   }
+}
+
+function getKeywordsForPath(pathname: string): string[] {
+  if (pathname.startsWith('/features')) {
+    return [...SEO_DEFAULT_KEYWORDS, 'url to obj converter', 'print-ready stl'];
+  }
+
+  if (pathname.startsWith('/faq')) {
+    return [...SEO_DEFAULT_KEYWORDS, 'is it free', 'stl vs obj'];
+  }
+
+  if (pathname.startsWith('/guides')) {
+    return [...SEO_DEFAULT_KEYWORDS, 'maker guide', 'qr 3d printing'];
+  }
+
+  if (pathname.startsWith('/editor') || pathname === '/') {
+    return [...SEO_DEFAULT_KEYWORDS, 'url to stl', 'qr code generator'];
+  }
+
+  return SEO_DEFAULT_KEYWORDS;
+}
+
+function buildStructuredData(pathname: string, meta: SeoMeta) {
+  const keywords = getKeywordsForPath(pathname);
+  const graph: Array<Record<string, unknown>> = [
+    {
+      '@id': SEO_ORG_ID,
+      '@type': 'Organization',
+      name: 'URL 2 STL',
+      url: `${SEO_BASE_URL}/`,
+      logo: SEO_SOCIAL_IMAGE_URL,
+      image: SEO_SOCIAL_IMAGE_URL,
+      description: 'Free QR maker and auto URL to STL/OBJ conversion workspace for makers and product teams.',
+    },
+    {
+      '@id': SEO_WEBSITE_ID,
+      '@type': 'WebSite',
+      name: 'URL 2 STL',
+      url: `${SEO_BASE_URL}/`,
+      description: DEFAULT_SEO.description,
+      inLanguage: 'en',
+      publisher: { '@id': SEO_ORG_ID },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: `${SEO_BASE_URL}/#/guides?query={search_term_string}`,
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@id': SEO_SOFTWARE_ID,
+      '@type': 'SoftwareApplication',
+      name: 'URL 2 STL',
+      applicationCategory: 'DesignApplication',
+      operatingSystem: 'Web',
+      inLanguage: 'en',
+      image: SEO_SOCIAL_IMAGE_URL,
+      isAccessibleForFree: true,
+      featureList: [
+        'Free QR maker',
+        'Auto URL conversion',
+        '3D model render preview',
+        'STL export',
+        'OBJ export',
+        'Print-ready output',
+      ],
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+        availability: 'https://schema.org/InStock',
+      },
+      description: DEFAULT_SEO.description,
+      url: meta.canonical,
+      publisher: { '@id': SEO_ORG_ID },
+    },
+    {
+      '@type': 'WebPage',
+      name: meta.title,
+      description: meta.description,
+      url: meta.canonical,
+      inLanguage: 'en',
+      keywords,
+      isPartOf: { '@id': SEO_WEBSITE_ID },
+      about: { '@id': SEO_SOFTWARE_ID },
+    },
+  ];
+
+  if (pathname.startsWith('/faq')) {
+    graph.push({
+      '@type': 'FAQPage',
+      mainEntity: SEO_FAQ_ITEMS.map((item) => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.answer,
+        },
+      })),
+    });
+  }
+
+  return {
+    '@context': 'https://schema.org',
+    '@graph': graph,
+  };
+}
+
+function applyStructuredData(pathname: string, meta: SeoMeta) {
+  const payload = JSON.stringify(buildStructuredData(pathname, meta));
+  let scriptTag = document.getElementById(SEO_JSONLD_SCRIPT_ID) as HTMLScriptElement | null;
+  if (!scriptTag) {
+    scriptTag = document.createElement('script');
+    scriptTag.id = SEO_JSONLD_SCRIPT_ID;
+    scriptTag.type = 'application/ld+json';
+    document.head.appendChild(scriptTag);
+  }
+  scriptTag.textContent = payload;
 }
 
 function currentRoutePathname(): string {
@@ -211,7 +366,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const updateSeo = () => {
-      applySeoMeta(getSeoForPath(currentRoutePathname()));
+      const pathname = currentRoutePathname();
+      const meta = getSeoForPath(pathname);
+      applySeoMeta(meta);
+      applyStructuredData(pathname, meta);
     };
 
     updateSeo();
@@ -309,6 +467,15 @@ const App: React.FC = () => {
             </Route>
             <Route exact path="/auth/callback">
               <AuthCallbackPage />
+            </Route>
+            <Route exact path="/features">
+              <FeaturesPage />
+            </Route>
+            <Route exact path="/faq">
+              <FaqPage />
+            </Route>
+            <Route exact path="/guides">
+              <GuidesPage />
             </Route>
             <Route exact path="/s/:code">
               <RedirectPage />

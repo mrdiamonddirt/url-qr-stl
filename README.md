@@ -113,6 +113,7 @@ Deploy commands:
 ```bash
 npm run deploy:dev
 npm run deploy:prod
+npm run deploy:ship
 ```
 
 Notes:
@@ -125,6 +126,8 @@ Notes:
 - Switch branches for deploy: `git checkout dev` or `git checkout production`.
 - `npm run deploy:prod` runs a local build before it pushes to production.
 - `npm run deploy:prod` must be run from branch `production`.
+- `npm run deploy:ship` runs a local build and pushes current `dev` HEAD directly to `origin/production` (no branch switching / no PR).
+- `npm run deploy:ship` must be run from branch `dev`.
 - Production deploy requires a typed confirmation prompt.
 - Because GitHub Pages serves one live site per repo, the most recent deploy becomes the active site.
 - In this one-repo setup, dev deploys are best checked on the GitHub Pages URL (`https://mrdiamonddirt.github.io/url-qr-stl/`) after the dev workflow completes.

@@ -11,7 +11,8 @@
     "test.unit": "vitest",
     "lint": "eslint",
     "deploy:dev": "npm run build && node scripts/deploy-branch.cjs dev --require-branch dev",
-    "deploy:prod": "npm run build && node scripts/deploy-branch.cjs production --confirm --require-branch production"
+    "deploy:prod": "npm run build && node scripts/deploy-branch.cjs production --confirm --require-branch production",
+    "deploy:ship": "npm run build && node scripts/deploy-branch.cjs production --confirm --require-branch dev"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

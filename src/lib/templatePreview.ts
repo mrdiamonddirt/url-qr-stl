@@ -286,8 +286,9 @@ function strokeFrame(
   if (!template.bottomBorderMode || template.bottomBorderMode === "normal") {
     beginFramePath(ctx, template, x, y, width, height, 0, scale);
     ctx.fill();
+    // Keep the interior opaque so model generation does not interpret it as a hole.
     ctx.save();
-    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "#ffffff";
     beginFramePath(ctx, template, x, y, width, height, innerInset, scale);
     ctx.fill();
     ctx.restore();

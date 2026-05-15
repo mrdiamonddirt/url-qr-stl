@@ -52,6 +52,7 @@ import './theme/variables.css';
 setupIonicReact();
 
 const ROUTER_BASENAME = import.meta.env.BASE_URL;
+const REQUIRE_AUTH = import.meta.env.VITE_REQUIRE_AUTH === 'true';
 const SEO_BASE_URL = 'https://url2stl.com';
 const SEO_SOCIAL_IMAGE_URL = `${SEO_BASE_URL}/favicon.png`;
 const SEO_JSONLD_SCRIPT_ID = 'url2stl-seo-jsonld';
@@ -316,6 +317,19 @@ function currentRoutePathname(): string {
   return pathname.startsWith('/') ? pathname : `/${pathname}`;
 }
 
+function currentRouteWithQuery(): string {
+  const hash = window.location.hash ?? '';
+  const hashPath = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!hashPath || hashPath === '/') {
+    return '/';
+  }
+  return hashPath.startsWith('/') ? hashPath : `/${hashPath}`;
+}
+
+function isAuthPath(pathname: string): boolean {
+  return pathname === '/auth' || pathname.startsWith('/auth/callback');
+}
+
 function hasUpgradeSuccessFlag(): boolean {
   const searchParams = new URLSearchParams(window.location.search);
   if (searchParams.get("upgrade") === "success") {
@@ -360,6 +374,7 @@ function clearUpgradeSuccessFlag() {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
 
   // Fix any localhost short URLs stored in localStorage
   useEffect(() => { backfillShortUrlOrigins(); }, []);
@@ -389,10 +404,12 @@ const App: React.FC = () => {
         if (current) {
           getProfile(current.id).then((p) => { if (mounted) setProfile(p); });
         }
+        setAuthResolved(true);
       }
     });
 
     if (!supabase) {
+      setAuthResolved(true);
       return () => {
         mounted = false;
       };
@@ -401,6 +418,7 @@ const App: React.FC = () => {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user ?? null;
       setUser(nextUser);
+      setAuthResolved(true);
       if (nextUser) {
         getProfile(nextUser.id).then((p) => { if (mounted) setProfile(p); });
       } else {
@@ -415,6 +433,20 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!REQUIRE_AUTH || !authResolved || user) {
+      return;
+    }
+
+    const pathname = currentRoutePathname();
+    if (isAuthPath(pathname)) {
+      return;
+    }
+
+    localStorage.setItem('url-qr-stl.return-to', currentRouteWithQuery());
+    window.location.hash = '/auth';
+  }, [authResolved, user]);
+
+  useEffect(() => {
     if (!user || !hasUpgradeSuccessFlag()) {
       return;
     }
@@ -422,7 +454,6 @@ const App: React.FC = () => {
     let cancelled = false;
     let attempts = 0;
     const maxAttempts = 15;
-    let intervalId: number | undefined;
 
     const refreshProfile = async () => {
       attempts += 1;
@@ -435,22 +466,18 @@ const App: React.FC = () => {
 
       if (isPaidPlan(next?.plan) || attempts >= maxAttempts) {
         clearUpgradeSuccessFlag();
-        if (intervalId !== undefined) {
-          window.clearInterval(intervalId);
-        }
+        window.clearInterval(intervalId);
       }
     };
 
-    void refreshProfile();
-    intervalId = window.setInterval(() => {
+    const intervalId = window.setInterval(() => {
       void refreshProfile();
     }, 2000);
+    void refreshProfile();
 
     return () => {
       cancelled = true;
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId);
-      }
+      window.clearInterval(intervalId);
     };
   }, [user]);
 

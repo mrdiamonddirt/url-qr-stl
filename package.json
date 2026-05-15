@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test.e2e": "cypress run",
     "test.unit": "vitest",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy:dev": "node scripts/deploy-branch.cjs dev",
+    "deploy:prod": "npm run build && node scripts/deploy-branch.cjs production --confirm"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

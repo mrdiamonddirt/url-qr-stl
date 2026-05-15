@@ -1,8 +1,8 @@
-name: Deploy to GitHub Pages
+name: Deploy Dev to GitHub Pages
 
 on:
   push:
-    branches: [production]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:
@@ -32,16 +32,15 @@ jobs:
 
       - name: Build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH: ${{ secrets.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH }}
-          VITE_GAM_SCAN_LIMIT_SIZES: ${{ secrets.VITE_GAM_SCAN_LIMIT_SIZES }}
-          VITE_REQUIRE_AUTH: "false"
+          VITE_SUPABASE_URL: ${{ secrets.DEV_VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.DEV_VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH: ${{ secrets.DEV_VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH || secrets.VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH }}
+          VITE_GAM_SCAN_LIMIT_SIZES: ${{ secrets.DEV_VITE_GAM_SCAN_LIMIT_SIZES || secrets.VITE_GAM_SCAN_LIMIT_SIZES }}
+          VITE_REQUIRE_AUTH: "true"
         run: npm run build
 
-      - name: Set production CNAME
-        run: echo "url2stl.com" > dist/CNAME
-
+      - name: Set dev CNAME
+        run: echo "dev.url2stl.com" > dist/CNAME
 
       - name: SPA fallback
         run: cp dist/index.html dist/404.html

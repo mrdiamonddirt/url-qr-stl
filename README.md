@@ -95,7 +95,7 @@ Not included yet:
 
 - Primary site URL: `https://url2stl.com/`
 
-## Deploy to GitHub Pages (optional preview)
+## Deploy to GitHub Pages
 
 Repository target:
 
@@ -103,7 +103,25 @@ Repository target:
 - Repo: `url-qr-stl`
 - Preview URL: `https://mrdiamonddirt.github.io/url-qr-stl/`
 
-This repo includes a workflow at `.github/workflows/deploy-pages.yml` that deploys on every push to `main`.
+This repo uses branch-based deployments with explicit commands:
+
+- `dev` branch deploys the dev environment (`dev.url2stl.com`) and forces Google login on every route.
+- `production` branch deploys production (`url2stl.com`).
+
+Deploy commands:
+
+```bash
+npm run deploy:dev
+npm run deploy:prod
+```
+
+Notes:
+
+- Deploy commands push the current `HEAD` to the target branch (`origin/dev` or `origin/production`).
+- Deploy commands require a clean working tree.
+- `npm run deploy:prod` runs a local build before it pushes to production.
+- Production deploy requires a typed confirmation prompt.
+- Because GitHub Pages serves one live site per repo, the most recent deploy becomes the active site.
 
 One-time GitHub setup:
 
@@ -115,6 +133,13 @@ Optional secrets (if you want live Supabase config on Pages):
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+
+Optional dev-specific secret overrides:
+
+- `DEV_VITE_SUPABASE_URL`
+- `DEV_VITE_SUPABASE_ANON_KEY`
+- `DEV_VITE_GAM_SCAN_LIMIT_AD_UNIT_PATH`
+- `DEV_VITE_GAM_SCAN_LIMIT_SIZES`
 
 If those secrets are not set, the app still deploys and runs in placeholder/local mode.
 

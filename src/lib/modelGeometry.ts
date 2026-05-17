@@ -1,4 +1,14 @@
-import { BoxGeometry, BufferGeometry, Color, Group, Material, Mesh, MeshNormalMaterial, MeshStandardMaterial } from "three";
+import {
+  BoxGeometry,
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  Group,
+  Material,
+  Mesh,
+  MeshNormalMaterial,
+  MeshStandardMaterial,
+} from "three";
 import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
 import { buildQrMatrix } from "./qr";
 import type { TemplateCompositionExtents } from "./templatePreview";
@@ -213,7 +223,163 @@ function createMaterialFromOptions(type: PreviewMaterialType | undefined, color:
   return mat;
 }
 
+function createSolidModelGroupFromGrid(mask: GridMask, params: StlParams, options?: ModelBuildOptions): Group {
+  const modelWidthMm = options?.dimensions?.widthMm ?? params.widthMm;
+  const modelHeightMm = options?.dimensions?.heightMm ?? params.heightMm;
+  const detailScale = DETAIL_SCALE[params.detail];
+  const moduleWidth = modelWidthMm / mask.width;
+  const moduleHeight = modelHeightMm / mask.height;
+  const raisedDepth = Math.max(1, params.depthMm * detailScale * 0.7);
+  const moduleDepth = params.bold ? raisedDepth * 1.5 : raisedDepth;
+  const baseDepth = Math.max(0, params.baseMm);
+  const baseMask = options?.baseMask;
+
+  const basePresent = new Array<boolean>(mask.width * mask.height).fill(false);
+  const raisedPresent = new Array<boolean>(mask.width * mask.height).fill(false);
+
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < mask.width; x += 1) {
+      const idx = y * mask.width + x;
+      const canHaveBase =
+        baseDepth > 0 &&
+        (!baseMask ||
+          (baseMask.width === mask.width && baseMask.height === mask.height && Boolean(baseMask.data[idx])));
+      basePresent[idx] = canHaveBase;
+
+      const isDark = mask.data[idx];
+      raisedPresent[idx] = params.invert ? !isDark : isDark;
+    }
+  }
+
+  const positions: number[] = [];
+  const xCoords = new Array<number>(mask.width + 1);
+  const yCoords = new Array<number>(mask.height + 1);
+
+  for (let x = 0; x <= mask.width; x += 1) {
+    xCoords[x] = -modelWidthMm / 2 + x * moduleWidth;
+  }
+
+  for (let y = 0; y <= mask.height; y += 1) {
+    yCoords[y] = modelHeightMm / 2 - y * moduleHeight;
+  }
+
+  const addTriangle = (
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    cx: number,
+    cy: number,
+    cz: number
+  ) => {
+    positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+  };
+
+  const addQuad = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+    d: [number, number, number]
+  ) => {
+    addTriangle(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    addTriangle(a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2]);
+  };
+
+  const hasCell = (cells: boolean[], x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) {
+      return false;
+    }
+    return cells[y * mask.width + x];
+  };
+
+  const emitLayer = (
+    cells: boolean[],
+    zBottom: number,
+    zTop: number,
+    includeTop: (idx: number) => boolean,
+    includeBottom: (idx: number) => boolean
+  ) => {
+    if (zTop <= zBottom) {
+      return;
+    }
+
+    for (let y = 0; y < mask.height; y += 1) {
+      for (let x = 0; x < mask.width; x += 1) {
+        if (!hasCell(cells, x, y)) {
+          continue;
+        }
+
+        const idx = y * mask.width + x;
+        const x0 = xCoords[x];
+        const x1 = xCoords[x + 1];
+        const y0 = yCoords[y];
+        const y1 = yCoords[y + 1];
+
+        if (includeTop(idx)) {
+          addQuad([x0, y0, zTop], [x0, y1, zTop], [x1, y1, zTop], [x1, y0, zTop]);
+        }
+
+        if (includeBottom(idx)) {
+          addQuad([x0, y0, zBottom], [x1, y0, zBottom], [x1, y1, zBottom], [x0, y1, zBottom]);
+        }
+
+        if (!hasCell(cells, x, y - 1)) {
+          // North (+Y)
+          addQuad([x0, y0, zBottom], [x1, y0, zBottom], [x1, y0, zTop], [x0, y0, zTop]);
+        }
+
+        if (!hasCell(cells, x, y + 1)) {
+          // South (-Y)
+          addQuad([x0, y1, zBottom], [x0, y1, zTop], [x1, y1, zTop], [x1, y1, zBottom]);
+        }
+
+        if (!hasCell(cells, x - 1, y)) {
+          // West (-X)
+          addQuad([x0, y0, zBottom], [x0, y0, zTop], [x0, y1, zTop], [x0, y1, zBottom]);
+        }
+
+        if (!hasCell(cells, x + 1, y)) {
+          // East (+X)
+          addQuad([x1, y0, zBottom], [x1, y1, zBottom], [x1, y1, zTop], [x1, y0, zTop]);
+        }
+      }
+    }
+  };
+
+  emitLayer(
+    basePresent,
+    0,
+    baseDepth,
+    (idx) => !raisedPresent[idx],
+    () => true
+  );
+
+  emitLayer(
+    raisedPresent,
+    baseDepth,
+    baseDepth + moduleDepth,
+    () => true,
+    (idx) => !basePresent[idx]
+  );
+
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+
+  const mesh = new Mesh(geometry, new MeshNormalMaterial());
+  const group = new Group();
+  group.add(mesh);
+  return group;
+}
+
 function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: ModelBuildOptions): Group {
+  const hasPreviewMaterials = Boolean(options?.baseMaterial || options?.moduleMaterial);
+  if (!hasPreviewMaterials) {
+    return createSolidModelGroupFromGrid(mask, params, options);
+  }
+
   const modelWidthMm = options?.dimensions?.widthMm ?? params.widthMm;
   const modelHeightMm = options?.dimensions?.heightMm ?? params.heightMm;
   const detailScale = DETAIL_SCALE[params.detail];

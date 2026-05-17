@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { resolveMaskBoundsForTemplateExtents, resolveTemplateCropBounds } from "./modelGeometry";
+import { Mesh } from "three";
+import { createQrModelGroup, resolveMaskBoundsForTemplateExtents, resolveTemplateCropBounds } from "./modelGeometry";
 
 describe("resolveMaskBoundsForTemplateExtents", () => {
   test("clamps full extents to stay inside edge guard", () => {
@@ -75,5 +76,41 @@ describe("resolveTemplateCropBounds", () => {
   test("returns null when both sources are unavailable", () => {
     const bounds = resolveTemplateCropBounds(null, null);
     expect(bounds).toBeNull();
+  });
+});
+
+describe("createQrModelGroup", () => {
+  test("builds a single valid mesh for export", () => {
+    const group = createQrModelGroup("https://example.com", {
+      widthMm: 40,
+      heightMm: 40,
+      depthMm: 2.8,
+      baseMm: 1,
+      detail: "medium",
+      invert: false,
+      qrType: "standard",
+    });
+
+    expect(group.children.length).toBeGreaterThan(0);
+    const mesh = group.children[0] as Mesh;
+    const positions = mesh.geometry.getAttribute("position");
+    expect(positions).toBeTruthy();
+    expect(positions.count % 3).toBe(0);
+
+    const vertexCount = positions.count;
+    let hasFiniteVertices = true;
+    for (let i = 0; i < vertexCount; i += 1) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      const z = positions.getZ(i);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        hasFiniteVertices = false;
+        break;
+      }
+    }
+
+    expect(group.children.length).toBe(1);
+    expect(vertexCount).toBeGreaterThan(0);
+    expect(hasFiniteVertices).toBe(true);
   });
 });

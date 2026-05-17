@@ -56,6 +56,7 @@ export type StlParams = {
   detail: "low" | "medium" | "high";
   invert: boolean;
   qrType: QrCodeType;
+  bold?: boolean; // Optional property to enable boldness by scaling depth
 };
 
 export type PreviewMaterialType = "normal" | "matte" | "plastic" | "metallic";

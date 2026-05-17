@@ -2500,31 +2500,24 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                             </IonItem>
                             <IonItem className="editor-item">
                               <IonLabel position="stacked">Text size (px)</IonLabel>
-                              <IonInput
-                                type="number"
-                                min={selectedTemplate.ctaConfig.minSizePx * CTA_SIZE_SCALE}
-                                max={selectedTemplate.ctaConfig.maxSizePx * CTA_SIZE_SCALE}
-                                value={Math.min(
-                                  selectedTemplate.ctaConfig.maxSizePx * CTA_SIZE_SCALE,
-                                  Math.max(
-                                    selectedTemplate.ctaConfig.minSizePx * CTA_SIZE_SCALE,
-                                    Number(templateValues[selectedTemplate.ctaConfig.sizeKey])
-                                      || selectedTemplate.ctaConfig.defaultSizePx * CTA_SIZE_SCALE
-                                  )
-                                )}
-                                onIonInput={(e) => {
-                                  const raw = Number(e.detail.value);
-                                  if (!Number.isFinite(raw)) return;
-                                  const clamped = Math.min(
-                                    selectedTemplate.ctaConfig!.maxSizePx * CTA_SIZE_SCALE,
-                                    Math.max(selectedTemplate.ctaConfig!.minSizePx * CTA_SIZE_SCALE, Math.round(raw))
-                                  );
+                              <IonSelect
+                                value={templateValues[selectedTemplate.ctaConfig.sizeKey] ?? String(selectedTemplate.ctaConfig.defaultSizePx)}
+                                onIonChange={(e) => {
                                   setTemplateValues((prev) => ({
                                     ...prev,
-                                    [selectedTemplate.ctaConfig!.sizeKey]: String(clamped),
+                                    [selectedTemplate.ctaConfig!.sizeKey]: String(e.detail.value),
                                   }));
                                 }}
-                              />
+                              >
+                                {Array.from(
+                                  { length: selectedTemplate.ctaConfig!.maxSizePx - selectedTemplate.ctaConfig!.minSizePx + 1 },
+                                  (_, i) => selectedTemplate.ctaConfig!.minSizePx + i
+                                ).map((size) => (
+                                  <IonSelectOption key={size} value={String(size)}>
+                                    {size}px
+                                  </IonSelectOption>
+                                ))}
+                              </IonSelect>
                             </IonItem>
                             <IonItem className="editor-item" lines="none">
                               <IonLabel position="stacked">Bar height (px)</IonLabel>

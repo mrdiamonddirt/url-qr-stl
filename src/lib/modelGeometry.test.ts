@@ -84,7 +84,7 @@ describe("createQrModelGroup", () => {
     const group = createQrModelGroup("https://example.com", {
       widthMm: 40,
       heightMm: 40,
-      depthMm: 2.8,
+      depthMm: 1,
       baseMm: 1,
       detail: "medium",
       invert: false,

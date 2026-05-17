@@ -79,7 +79,7 @@ const makeCode = customAlphabet("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmno
 const DEFAULT_STL: StlParams = {
   widthMm: 40,
   heightMm: 40,
-  depthMm: 2.8,
+  depthMm: 1,
   baseMm: 1,
   detail: "medium",
   invert: false,

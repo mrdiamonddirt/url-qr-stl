@@ -219,7 +219,11 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
   const detailScale = DETAIL_SCALE[params.detail];
   const moduleWidth = modelWidthMm / mask.width;
   const moduleHeight = modelHeightMm / mask.height;
-  const raisedDepth = Math.max(0.4, params.depthMm * detailScale * 0.7);
+  const raisedDepth = Math.max(1, params.depthMm * detailScale * 0.7); // Default depth set to 1mm
+
+  // Allow dynamic boldness adjustment by scaling depth
+  const moduleDepth = params.bold ? raisedDepth * 1.5 : raisedDepth;
+
   const group = new Group();
   const baseMaterial = options?.baseMaterial ?? new MeshNormalMaterial();
   const moduleMaterial = options?.moduleMaterial ?? new MeshNormalMaterial();
@@ -262,7 +266,6 @@ function createModelGroupFromGrid(mask: GridMask, params: StlParams, options?: M
     }
   }
 
-  const moduleDepth = raisedDepth;
   const zOffset = params.baseMm + moduleDepth / 2;
 
   for (let y = 0; y < mask.height; y += 1) {

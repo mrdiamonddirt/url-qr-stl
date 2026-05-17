@@ -47,7 +47,7 @@ export const TEMPLATE_PRESETS: QrTemplate[] = [
       fontKey: "cta_font",
       chipHeightKey: "cta_chip_height",
       minSizePx: 14,
-      maxSizePx: 42,
+      maxSizePx: 84,
       defaultSizePx: 21,
       maxLines: 2,
       maxWidth: 240,

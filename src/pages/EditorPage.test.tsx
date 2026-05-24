@@ -35,18 +35,23 @@ describe("EditorPage template picker", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    expect(screen.getAllByRole("button", { name: /Select template /i })).toHaveLength(9);
+    expect(screen.getAllByRole("button", { name: /Select template /i })).toHaveLength(14);
     expect(screen.getByRole("button", { name: "Select template No Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Simple Border" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Simple Border Round" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Fancy Border" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Scan Me" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Open Link" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Tap Tag" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Loop Square" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Loop Round" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Loop Circle" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Loop Square + Text" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select template Loop Round + Text" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Loop Circle + Text" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select template Loop Round Fancy + Text" })).toBeInTheDocument();
 
-    expect(screen.getAllByText("Premium").length).toBeGreaterThanOrEqual(4);
+    expect(screen.getAllByText("Premium").length).toBeGreaterThanOrEqual(5);
 
     expect(screen.getByText(/No text fields for this template/i)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Enter custom tag text")).not.toBeInTheDocument();

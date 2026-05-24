@@ -12,7 +12,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
+import { ModelPreviewOptions, PreviewMaterialType, QrTemplate, StlParams } from "../types";
 import { createTemplateModelGroup, disposeQrModelGroup } from "../lib/modelGeometry";
 import type { TemplateCompositionExtents } from "../lib/templatePreview";
 
@@ -20,6 +20,7 @@ type Props = {
   imageDataUrl: string;
   params: StlParams;
   compositionExtents?: TemplateCompositionExtents;
+  frameStyle?: QrTemplate["frameStyle"];
   previewOptions?: ModelPreviewOptions;
   onPreviewOptionsChange?: (opts: ModelPreviewOptions) => void;
   onLoadingChange?: (isLoading: boolean) => void;
@@ -118,6 +119,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({
   imageDataUrl,
   params,
   compositionExtents,
+  frameStyle,
   previewOptions,
   onPreviewOptionsChange,
   onLoadingChange,
@@ -332,6 +334,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({
       mode: "preview",
       previewOptions,
       compositionExtents,
+      frameStyle,
     })
       .then((group) => {
         if (!active) {
@@ -406,7 +409,7 @@ const ModelPreviewCanvas: React.FC<Props> = ({
       renderer.dispose();
       host.removeChild(renderer.domElement);
     };
-  }, [imageDataUrl, onLoadingChange, params, previewOptions, compositionExtents, applyFlatViewMode, applyOrbitLockMode]);
+  }, [imageDataUrl, onLoadingChange, params, previewOptions, compositionExtents, frameStyle, applyFlatViewMode, applyOrbitLockMode]);
 
   return (
     <div className="model-canvas-shell">

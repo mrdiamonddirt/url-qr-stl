@@ -9,7 +9,7 @@ import {
   MeshNormalMaterial,
   MeshStandardMaterial,
 } from "three";
-import { ModelPreviewOptions, PreviewMaterialType, StlParams } from "../types";
+import { ModelPreviewOptions, PreviewMaterialType, QrTemplate, StlParams } from "../types";
 import { buildQrMatrix } from "./qr";
 import type { TemplateCompositionExtents } from "./templatePreview";
 
@@ -62,6 +62,7 @@ type TemplateModelGroupOptions = {
   mode?: "export" | "preview";
   previewOptions?: ModelPreviewOptions;
   compositionExtents?: TemplateCompositionExtents;
+  frameStyle?: QrTemplate["frameStyle"];
 };
 
 type Run = {
@@ -528,6 +529,23 @@ function removeTinyIslands(mask: GridMask, minArea: number): GridMask {
   };
 }
 
+export function resolveTemplateSampleHeight(
+  imageWidth: number,
+  imageHeight: number,
+  sampleWidth: number,
+  forceSquare: boolean
+): number {
+  if (forceSquare) {
+    return sampleWidth;
+  }
+
+  if (imageWidth <= 0 || imageHeight <= 0) {
+    return sampleWidth;
+  }
+
+  return Math.max(84, Math.round((sampleWidth * imageHeight) / imageWidth));
+}
+
 export function createQrModelGroup(value: string, params: StlParams): Group {
   const matrix = buildQrMatrix(value, params.qrType ?? "standard");
   return createModelGroupFromGrid(
@@ -547,7 +565,8 @@ export async function createTemplateModelGroup(
 ): Promise<Group> {
   const image = await loadImage(imageDataUrl);
   const sampleWidth = options?.mode === "preview" ? TEMPLATE_PREVIEW_SAMPLE_WIDTH[params.detail] : TEMPLATE_SAMPLE_WIDTH[params.detail];
-  const sampleHeight = Math.max(84, Math.round((sampleWidth * image.height) / image.width));
+  const isCircleFrame = options?.frameStyle === "circle";
+  const sampleHeight = resolveTemplateSampleHeight(image.width, image.height, sampleWidth, isCircleFrame);
   const canvas = document.createElement("canvas");
   canvas.width = sampleWidth;
   canvas.height = sampleHeight;

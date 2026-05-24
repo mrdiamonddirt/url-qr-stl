@@ -1,10 +1,11 @@
 import { OBJExporter, STLExporter } from "three-stdlib";
-import { StlParams } from "../types";
+import { QrTemplate, StlParams } from "../types";
 import { createQrModelGroup, createTemplateModelGroup, disposeQrModelGroup } from "./modelGeometry";
 import type { TemplateCompositionExtents } from "./templatePreview";
 
 type TemplateExportOptions = {
   compositionExtents?: TemplateCompositionExtents;
+  frameStyle?: QrTemplate["frameStyle"];
 };
 
 export function createQrStlBlob(value: string, params: StlParams): Blob {
@@ -40,6 +41,7 @@ export async function createTemplateStlBlob(
 ): Promise<Blob> {
   const group = await createTemplateModelGroup(imageDataUrl, params, {
     compositionExtents: options?.compositionExtents,
+    frameStyle: options?.frameStyle,
   });
   group.updateMatrixWorld(true);
 
@@ -63,6 +65,7 @@ export async function createTemplateObjBlob(
 ): Promise<Blob> {
   const group = await createTemplateModelGroup(imageDataUrl, params, {
     compositionExtents: options?.compositionExtents,
+    frameStyle: options?.frameStyle,
   });
   group.updateMatrixWorld(true);
   const exporter = new OBJExporter();

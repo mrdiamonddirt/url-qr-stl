@@ -115,4 +115,96 @@ describe("resolveTemplateCompositionExtents", () => {
 
     expect(extents.top).toBeLessThan(0.08);
   });
+
+  test("keeps rounded border template extents bounded to canvas", () => {
+    const template = TEMPLATE_PRESETS.find((preset) => preset.id === "simple-border-round");
+    expect(template).toBeTruthy();
+
+    const extents = resolveTemplateCompositionExtents(
+      template as NonNullable<typeof template>,
+      buildTemplateValues("simple-border-round")
+    );
+
+    expect(extents.left).toBeGreaterThanOrEqual(0);
+    expect(extents.top).toBeGreaterThanOrEqual(0);
+    expect(extents.right).toBeLessThanOrEqual(1);
+    expect(extents.bottom).toBeLessThanOrEqual(1);
+  });
+
+  test("captures combined loop and CTA extents for hybrid templates", () => {
+    const template = TEMPLATE_PRESETS.find((preset) => preset.id === "loop-circle-text");
+    expect(template).toBeTruthy();
+
+    const extents = resolveTemplateCompositionExtents(
+      template as NonNullable<typeof template>,
+      buildTemplateValues("loop-circle-text", {
+        loop_outer_radius: "20",
+        loop_stem_width: "50",
+        loop_thickness: "11",
+        cta_chip_height: "44",
+      })
+    );
+
+    expect(extents.top).toBeLessThan(0.08);
+    expect(extents.bottom).toBeGreaterThan(0.9);
+    expect(extents.left).toBeGreaterThanOrEqual(0);
+    expect(extents.right).toBeLessThanOrEqual(1);
+  });
+
+  test("returns equal width and height extents for pure circle frames", () => {
+    const base = TEMPLATE_PRESETS.find((preset) => preset.id === "simple-border");
+    expect(base).toBeTruthy();
+
+    const circleTemplate = {
+      ...(base as NonNullable<typeof base>),
+      id: "test-circle",
+      name: "Test Circle",
+      frameStyle: "circle" as const,
+      loopConfig: undefined,
+      ctaConfig: undefined,
+      ctaLabel: undefined,
+      fields: [],
+      bottomBorderMode: "normal" as const,
+    };
+
+    const extents = resolveTemplateCompositionExtents(circleTemplate, buildTemplateValues("simple-border"));
+    const width = extents.right - extents.left;
+    const height = extents.bottom - extents.top;
+    expect(Math.abs(width - height)).toBeLessThan(0.0001);
+  });
+
+  test("keeps CTA bounds inside circle frame box for circle CTA templates", () => {
+    const scanMe = TEMPLATE_PRESETS.find((preset) => preset.id === "scan-me");
+    expect(scanMe).toBeTruthy();
+
+    const circleCtaTemplate = {
+      ...(scanMe as NonNullable<typeof scanMe>),
+      id: "scan-me-circle",
+      name: "Scan Me Circle",
+      frameStyle: "circle" as const,
+      borderStyle: "simple" as const,
+      bottomBorderMode: "normal" as const,
+    };
+
+    const values = buildTemplateValues("scan-me", {
+      cta_text: "SCAN THIS TAG",
+      cta_size: "30",
+      cta_chip_height: "46",
+    });
+
+    const circleExtents = resolveTemplateCompositionExtents(circleCtaTemplate, values);
+    const circleNoCtaExtents = resolveTemplateCompositionExtents(
+      {
+        ...circleCtaTemplate,
+        ctaConfig: undefined,
+        ctaLabel: undefined,
+        fields: [],
+      },
+      values
+    );
+
+    expect(circleExtents.left).toBeGreaterThanOrEqual(circleNoCtaExtents.left - 0.001);
+    expect(circleExtents.right).toBeLessThanOrEqual(circleNoCtaExtents.right + 0.001);
+    expect(circleExtents.bottom).toBeLessThanOrEqual(circleNoCtaExtents.bottom + 0.001);
+  });
 });

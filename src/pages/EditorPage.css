@@ -934,19 +934,12 @@
   color: #20324d;
 }
 
-.template-picker-title {
-  margin: 4px 0 12px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #20324d;
-}
-
 .template-scroll-row {
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  padding: 6px 2px 14px;
-  margin-bottom: 12px;
+  padding: 6px 2px 12px;
+  margin-bottom: 8px;
   scrollbar-color: #8b99ad #dde5ee;
 }
 
@@ -994,10 +987,15 @@
 }
 
 .template-button-label {
-  font-size: 0.76rem;
+  display: block;
+  width: 100%;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  line-height: 1.2;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #25364e;
 }
 
@@ -2903,14 +2901,20 @@
   }
 
   .template-button {
-    min-width: 120px;
-    max-width: 120px;
-    min-height: 132px;
+    min-width: 112px;
+    max-width: 112px;
+    min-height: 122px;
+    padding: 8px 7px 9px;
+    gap: 8px;
   }
 
   .template-card-preview {
-    width: 102px;
-    height: 102px;
+    width: 92px;
+    height: 92px;
+  }
+
+  .template-button-label {
+    font-size: 0.72rem;
   }
 
   .preview-box {
@@ -3124,14 +3128,20 @@
   }
 
   .template-button {
-    min-width: 112px;
-    max-width: 112px;
-    min-height: 126px;
+    min-width: 102px;
+    max-width: 102px;
+    min-height: 114px;
+    padding: 7px 6px 8px;
+    gap: 7px;
   }
 
   .template-card-preview {
-    width: 88px;
-    height: 88px;
+    width: 80px;
+    height: 80px;
+  }
+
+  .template-button-label {
+    font-size: 0.68rem;
   }
 
   .direct-upgrade-overlay {

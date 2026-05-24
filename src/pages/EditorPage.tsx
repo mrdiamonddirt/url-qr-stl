@@ -67,7 +67,7 @@ import {
   updateProfileRedirectMode,
 } from "../lib/supabaseClient";
 import { formatPlanPrice, getAllowedCheckoutTargets, getPlanLabel, getPlanLimits, getUpgradeCreditLabel, isPaidPlan } from "../lib/plans";
-import { CheckoutTargetPlan, ModelFormat, ModelPreviewOptions, PreviewMaterialType, Profile, QrCodeType, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
+import { CheckoutTargetPlan, ModelFormat, ModelPreviewOptions, PreviewMaterialType, Profile, QrCodeType, QrTemplate, RedirectMode, ShortUrlRecord, StlParams, SupabaseShortUrlRow, UserLogo } from "../types";
 import AppFooter from "../components/AppFooter";
 import "./EditorPage.css";
 
@@ -116,7 +116,6 @@ const CTA_FONT_OPTIONS: Record<string, string> = {
 };
 const PREMIUM_TEMPLATE_LOCK_MESSAGE = "Premium template selected. Upgrade to unlock this style.";
 const PREMIUM_TEMPLATE_LOCK_KEY = "premium-template-lock";
-
 const DIMENSION_UNIT_OPTIONS: Array<{ value: DimensionUnit; label: string; mmFactor: number }> = [
   { value: "mm", label: "Millimeters (mm)", mmFactor: 1 },
   { value: "cm", label: "Centimeters (cm)", mmFactor: 10 },
@@ -275,6 +274,23 @@ function normalizeFrameLogoUrl(value: string | null | undefined): string {
   return trimmed ?? "";
 }
 
+type TemplatePickerCategory = "border" | "cta" | "loop" | "hybrid";
+
+const TEMPLATE_CATEGORY_ORDER: TemplatePickerCategory[] = ["border", "cta", "loop", "hybrid"];
+
+function resolveTemplatePickerCategory(template: QrTemplate): TemplatePickerCategory {
+  if (template.loopConfig && (template.ctaConfig || template.ctaLabel)) {
+    return "hybrid";
+  }
+  if (template.loopConfig) {
+    return "loop";
+  }
+  if (template.ctaConfig || template.ctaLabel) {
+    return "cta";
+  }
+  return "border";
+}
+
 
 const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const history = useHistory();
@@ -358,6 +374,30 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
   const monthlyScans = profile?.monthly_scans ?? 0;
   const monthlyScanPercent = Math.min(100, Math.round((monthlyScans / planLimits.monthlyScanLimit) * 100));
   const premiumTemplatesCount = TEMPLATE_PRESETS.filter((preset) => preset.premiumOnly).length;
+  const orderedTemplatePresets = useMemo(() => {
+    const grouped = TEMPLATE_PRESETS.reduce<Record<TemplatePickerCategory, QrTemplate[]>>((acc, preset) => {
+      const category = resolveTemplatePickerCategory(preset);
+      acc[category].push(preset);
+      return acc;
+    }, {
+      border: [],
+      cta: [],
+      loop: [],
+      hybrid: [],
+    });
+
+    for (const category of TEMPLATE_CATEGORY_ORDER) {
+      grouped[category].sort((a, b) => {
+        const premiumDelta = Number(Boolean(a.premiumOnly)) - Number(Boolean(b.premiumOnly));
+        if (premiumDelta !== 0) {
+          return premiumDelta;
+        }
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    return TEMPLATE_CATEGORY_ORDER.flatMap((category) => grouped[category]);
+  }, []);
   const dimensionUnitLabel = useMemo(
     () => DIMENSION_UNIT_OPTIONS.find((option) => option.value === dimensionUnit)?.label ?? "Millimeters (mm)",
     [dimensionUnit]
@@ -1250,8 +1290,14 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
       }
       const blob =
         modelFormat === "stl"
-          ? await createTemplateStlBlob(modelSource, stlParams, { compositionExtents })
-          : await createTemplateObjBlob(modelSource, stlParams, { compositionExtents });
+          ? await createTemplateStlBlob(modelSource, stlParams, {
+            compositionExtents,
+            frameStyle: selectedTemplate.frameStyle,
+          })
+          : await createTemplateObjBlob(modelSource, stlParams, {
+            compositionExtents,
+            frameStyle: selectedTemplate.frameStyle,
+          });
       const extension = modelFormat === "stl" ? "stl" : "obj";
       downloadStl(blob, `qr-tag-${generated.code}.${extension}`);
 
@@ -2326,6 +2372,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 imageDataUrl={modelSourcePreviewUrl || composedPreviewUrl}
                                 params={stlParams}
                                 compositionExtents={compositionExtents}
+                                frameStyle={selectedTemplate.frameStyle}
                                 previewOptions={previewOptions}
                                 onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}
@@ -2367,6 +2414,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                                 imageDataUrl={modelSourcePreviewUrl || composedPreviewUrl}
                                 params={stlParams}
                                 compositionExtents={compositionExtents}
+                                frameStyle={selectedTemplate.frameStyle}
                                 previewOptions={previewOptions}
                                 onPreviewOptionsChange={handlePreviewOptionsChange}
                                 onLoadingChange={setModelPreviewLoading}
@@ -2414,7 +2462,7 @@ const EditorPage: React.FC<Props> = ({ user, profile }) => {
                     </div>
                     <p className="template-picker-title">Template</p>
                     <div className="template-scroll-row" role="list" aria-label="Template options">
-                      {TEMPLATE_PRESETS.map((preset) => {
+                      {orderedTemplatePresets.map((preset) => {
                         const isActive = preset.id === selectedTemplateId;
                         const isLocked = Boolean(preset.premiumOnly && !isPremiumPlan);
                         return (

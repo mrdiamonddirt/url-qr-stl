@@ -175,13 +175,32 @@ function beginFramePath(
   }
 
   if (template.frameStyle === "circle") {
-    drawRoundedRect(ctx, drawX, drawY, drawWidth, drawHeight, 100 * scale);
+    const diameter = Math.max(0, Math.min(drawWidth, drawHeight));
+    const radius = diameter / 2;
+    const centerX = drawX + drawWidth / 2;
+    const centerY = drawY + drawHeight / 2;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.closePath();
     return;
   }
 
   ctx.beginPath();
   ctx.rect(drawX, drawY, drawWidth, drawHeight);
   ctx.closePath();
+}
+
+function fillFrameBase(
+  ctx: CanvasRenderingContext2D,
+  template: QrTemplate,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scale = 1
+) {
+  beginFramePath(ctx, template, x, y, width, height, 0, scale);
+  ctx.fill();
 }
 
 export function resolveLoopConfig(
@@ -379,10 +398,23 @@ function drawTopLoop(
   const lift = loop.lift * scale;
   const stemTop = frameY - stemHeight;
   const loopCenterY = stemTop - lift;
-  const stemBottomY = frameY;
+  let stemBottomY = frameY;
   const stemTopY = stemTop;
   const shoulderY = stemTopY + Math.max(2 * scale, stemHeight * 0.26);
-  const halfBottom = stemWidth / 2;
+  let halfBottom = stemWidth / 2;
+
+  if (template.frameStyle === "circle") {
+    const frameStrokeWidth = getFrameStrokeWidth(template, scale, values);
+    stemBottomY = frameY + Math.max(2 * scale, frameStrokeWidth * 0.9);
+
+    const radius = frameSize / 2;
+    const centerY = frameY + radius;
+    const dy = Math.abs(stemBottomY - centerY);
+    const halfChord = dy >= radius ? 0 : Math.sqrt(Math.max(0, radius * radius - dy * dy));
+    const safeHalfChord = Math.max(0, halfChord - Math.max(1.5 * scale, frameStrokeWidth * 0.4));
+    halfBottom = Math.min(halfBottom, safeHalfChord);
+  }
+
   const halfTop = Math.max(outerRadius * 0.46, Math.min(halfBottom, outerRadius * 0.62));
   const shoulderControlY = shoulderY - Math.max(1.5 * scale, stemHeight * 0.14);
 
@@ -647,6 +679,58 @@ function resolveQrInset(
   return clampNumber(borderDrivenInset, 8 * scale, 18 * scale);
 }
 
+function maxCircleWidthForVerticalSpan(
+  centerY: number,
+  radius: number,
+  topY: number,
+  bottomY: number,
+  horizontalInset: number
+): number {
+  const farthestY = Math.max(Math.abs(topY - centerY), Math.abs(bottomY - centerY));
+  if (farthestY >= radius) {
+    return 0;
+  }
+
+  const halfWidth = Math.sqrt(Math.max(0, radius * radius - farthestY * farthestY));
+  return Math.max(0, halfWidth * 2 - horizontalInset * 2);
+}
+
+function fitCenteredSquareWithinCircle(
+  circleCenterY: number,
+  circleRadius: number,
+  minTop: number,
+  maxBottom: number,
+  preferredSize: number
+): { size: number; y: number } {
+  let nextSize = Math.max(0, Math.floor(preferredSize));
+
+  while (nextSize > 0) {
+    const half = nextSize / 2;
+    const maxCenterOffset = Math.sqrt(Math.max(0, circleRadius * circleRadius - half * half)) - half;
+    if (maxCenterOffset < 0) {
+      nextSize -= 1;
+      continue;
+    }
+
+    const minCenter = Math.max(minTop + half, circleCenterY - maxCenterOffset);
+    const maxCenter = Math.min(maxBottom - half, circleCenterY + maxCenterOffset);
+    if (maxCenter >= minCenter) {
+      const centerY = (minCenter + maxCenter) / 2;
+      return {
+        size: nextSize,
+        y: centerY - half,
+      };
+    }
+
+    nextSize -= 1;
+  }
+
+  return {
+    size: 0,
+    y: minTop,
+  };
+}
+
 function resolveCompositionLayout(
   ctx: CanvasRenderingContext2D,
   template: QrTemplate,
@@ -670,7 +754,14 @@ function resolveCompositionLayout(
   const frameStrokeWidth = getFrameStrokeWidth(template, scale, values);
   const frameContentInset = frameStrokeWidth > 0 ? frameStrokeWidth : 0;
   const frameInnerWidth = Math.max(0, frameSize - 2 * frameContentInset);
-  let ctaLayout = resolveCtaLayout(ctx, template, values, scale, template.ctaConfig ? frameInnerWidth : undefined);
+  const circleCtaMaxWidth = template.frameStyle === "circle" ? frameInnerWidth * 0.78 : frameInnerWidth;
+  let ctaLayout = resolveCtaLayout(
+    ctx,
+    template,
+    values,
+    scale,
+    template.ctaConfig ? circleCtaMaxWidth : undefined
+  );
   const blockCta = ctaLayout?.blockStyle ?? false;
   const qrInset = resolveQrInset(frameSize, scale, frameStrokeWidth);
   const ctaGap = blockCta ? 0 : Math.max(6 * scale, frameSize * 0.02);
@@ -678,6 +769,10 @@ function resolveCompositionLayout(
   const contentTop = frameY + frameContentInset;
   const contentRight = frameX + frameSize - frameContentInset;
   const contentBottom = frameY + frameSize - frameContentInset;
+  const isCircleFrame = template.frameStyle === "circle";
+  const circleCenterX = frameX + frameSize / 2;
+  const circleCenterY = frameY + frameSize / 2;
+  const circleRadius = Math.max(0, frameSize / 2 - frameContentInset - Math.max(1, scale));
 
   const qrLeft = contentLeft + qrInset;
   const qrTop = contentTop + qrInset;
@@ -697,6 +792,30 @@ function resolveCompositionLayout(
       // Normal: label inside border
       chipYRaw = contentBottom - ctaLayout.bottomInset - ctaLayout.chipHeight;
     }
+
+    if (isCircleFrame) {
+      const chipHeight = ctaLayout.chipHeight;
+      const minCenterY = circleCenterY - circleRadius + chipHeight / 2;
+      const maxCenterY = circleCenterY + circleRadius - chipHeight / 2;
+      const targetCenterY = circleCenterY + circleRadius * 0.62;
+      const chipCenterY = clampNumber(targetCenterY, minCenterY, maxCenterY);
+      const constrainedChipY = chipCenterY - chipHeight / 2;
+      const maxChipWidth = maxCircleWidthForVerticalSpan(
+        circleCenterY,
+        circleRadius,
+        constrainedChipY,
+        constrainedChipY + chipHeight,
+        Math.max(2 * scale, frameStrokeWidth)
+      );
+
+      ctaLayout = {
+        ...ctaLayout,
+        blockStyle: false,
+        chipRadius: Math.max(ctaLayout.chipRadius, chipHeight / 2),
+        chipWidth: clampNumber(ctaLayout.chipWidth, 64 * scale, Math.max(64 * scale, maxChipWidth)),
+      };
+      chipYRaw = constrainedChipY;
+    }
   }
 
   const qrBottomAnchor = chipYRaw === null
@@ -707,6 +826,30 @@ function resolveCompositionLayout(
   let qrBottomLimit = Math.max(qrTop, qrBottomAnchor);
   let qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
   let qrSize = Math.max(0, Math.floor(Math.min(qrAvailableWidth, qrAvailableHeight)));
+
+  if (isCircleFrame && qrSize > 0) {
+    const fitted = fitCenteredSquareWithinCircle(circleCenterY, circleRadius, qrTop, qrBottomLimit, qrSize);
+    qrSize = fitted.size;
+    qrAvailableHeight = Math.max(0, qrBottomLimit - qrTop);
+
+    if (qrSize > 0) {
+      const qrXCircle = Math.round(circleCenterX - qrSize / 2);
+      const qrYCircle = Math.round(fitted.y);
+      const chipY = chipYRaw === null ? null : Math.round(chipYRaw);
+      return {
+        scale,
+        frameX,
+        frameY,
+        frameSize,
+        frameContentInset,
+        qrX: qrXCircle,
+        qrY: qrYCircle,
+        qrSize,
+        chipY,
+        ctaLayout,
+      };
+    }
+  }
 
   if (ctaLayout && template.bottomBorderMode === "fusedLabel") {
     const borderWidth = Math.max(1, Math.round(frameStrokeWidth));
@@ -877,7 +1020,7 @@ export async function composeTemplateSelectorPreview(
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
+    fillFrameBase(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale);
     strokeFrame(
       ctx,
       template,
@@ -955,7 +1098,7 @@ export async function composeTemplatePreview({
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(layout.frameX, layout.frameY, layout.frameSize, layout.frameSize);
+  fillFrameBase(ctx, template, layout.frameX, layout.frameY, layout.frameSize, layout.frameSize, layout.scale);
   strokeFrame(
     ctx,
     template,

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { Mesh } from "three";
-import { createQrModelGroup, resolveMaskBoundsForTemplateExtents, resolveTemplateCropBounds } from "./modelGeometry";
+import {
+  createQrModelGroup,
+  resolveMaskBoundsForTemplateExtents,
+  resolveTemplateCropBounds,
+  resolveTemplateSampleHeight,
+} from "./modelGeometry";
 
 describe("resolveMaskBoundsForTemplateExtents", () => {
   test("clamps full extents to stay inside edge guard", () => {
@@ -112,5 +117,17 @@ describe("createQrModelGroup", () => {
     expect(group.children.length).toBe(1);
     expect(vertexCount).toBeGreaterThan(0);
     expect(hasFiniteVertices).toBe(true);
+  });
+});
+
+describe("resolveTemplateSampleHeight", () => {
+  test("keeps square sampling for circle frames", () => {
+    const sampleHeight = resolveTemplateSampleHeight(480, 360, 200, true);
+    expect(sampleHeight).toBe(200);
+  });
+
+  test("preserves aspect-ratio sampling for non-circle frames", () => {
+    const sampleHeight = resolveTemplateSampleHeight(480, 360, 200, false);
+    expect(sampleHeight).toBe(150);
   });
 });
